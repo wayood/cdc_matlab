@@ -5,6 +5,12 @@ global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
 global drive_cdc;
+global dt;
+global past_obs;
+global slip;
+slip=0;
+past_obs=[];
+dt=0;
 drive_cdc=[];
 load("path_interp.mat");
 p.start=[0;0];
@@ -71,7 +77,7 @@ p_in=0;
 
 %ナビゲーション
 while 1
-   p.start=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path);
+   [p.start,up_obs]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path);
    l=len(wp(:,i).',p.start.');
    delete(kill);
    delete(point);
@@ -87,12 +93,7 @@ while 1
    p_cdc(i)=potential(glo_obs,wp(:,i),glo_rand_size);
    p_cd=sum(p_cdc)/i;%走行後のパテンシャル場の平均
    i=i+1;
-  
-   [ang_wp,sen_num,obs]=sensor_range(glo_obs,p.start,wp(:,i));
-   [up_obs]=gosa_move(obs,p.start,ang_wp);
-   [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
-   obs=ob_round(gosa_obs,rand_size);
-   [b,w]=animation(up_obs,wp,p,i,rand_size);
+   %[b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成
    if len(wp(:,length(wp(1,:))).',p.start.')<0.7 
        fx(wp(:,i),p.start);
@@ -155,7 +156,7 @@ end
 end
 
 %誤差をロボット進行方向に考えて表示
-function [up_obs]=gosa_move(obs,start,ang_wp)
+function [up_obs]=gosa_move(obs,start,ang_wp,v)
  for i=1:length(obs(1,:))
     r(i)=len(obs(:,i).',start.');
     if r(i)<1
@@ -164,14 +165,14 @@ function [up_obs]=gosa_move(obs,start,ang_wp)
     l(i)=18.5*10^-2*r(i)^2*0.01;
     x_ran=-0.01+0.01*rand;%キャリブレーションや分解能での誤差を考える
     y_ran=-0.01+0.01*rand;
-    up_obs(1,i)=x_ran;
-    up_obs(2,i)=l(i)+y_ran;
+    error(1,i)=x_ran;
+    error(2,i)=l(i)+y_ran;
     ang_wp=ang_wp-pi/2;
-    up_obs(:,i)=[cos(ang_wp),-sin(ang_wp);
-            sin(ang_wp),cos(ang_wp)]*up_obs(:,i);
-    up_obs(1,i)=up_obs(1,i)+obs(1,i);
-    up_obs(2,i)=up_obs(2,i)+obs(2,i);
-    up_obs(:,i)=sliprate(up_obs(:,i),ang_wp);
+    error(:,i)=[cos(ang_wp),-sin(ang_wp);
+            sin(ang_wp),cos(ang_wp)]*error(:,i);
+    up_obs(1,i)=error(1,i)+obs(1,i);
+    up_obs(2,i)=error(2,i)+obs(2,i);
+    up_obs(:,i)=sliprate(up_obs(:,i),ang_wp,v);
     
  end
     up_obs(3,:)=1;
@@ -370,10 +371,15 @@ function [r_x,r_y]=circle(x,y,r)
 end
 
 %% スリップ率導入
-function ex=sliprate(cur_obs,ang)
- r=(randi(4)-1)/10;
- x=r*cos(ang);
- y=r*sin(ang);
+function ex=sliprate(cur_obs,ang,v)
+ global dt; 
+ global slip;
+ s=randi(1)/100;
+ v_real=(1-s)*v;
+ slip_length=(v_real-v)*dt;
+ slip=slip+slip_length;
+ x=slip*cos(ang);
+ y=slip*sin(ang);
  ex(2,1)=cur_obs(2,1)-y;
  ex(1,1)=cur_obs(1,1)-x;
 end
@@ -391,7 +397,7 @@ end
 end
 
 %% local plan
-function s = DynamicWindowApproachSample_k(start,goal,obstacle,path)
+function [s,up_obs] = DynamicWindowApproachSample_k(start,goal,obstacle,path)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 global glo_obs;
@@ -418,20 +424,19 @@ result.x=[];
 for i=1:5000
 %DWAによる入力値の計算
 [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR,path);
+disp(u);
 x=f(x,u);%運動モデルによる移動
+
 %シミュレーション結果の保存
 result.x=[result.x; x'];
 start=[x(1),x(2)];
 s_x=[x(1);x(2)];
 drive_cdc=[drive_cdc s_x];
 [ang_wp,sen_num,cur_obs]=sensor_range(glo_obs,start.',goal.');
-[up_obs]=gosa_move(cur_obs,start.',ang_wp);
+[up_obs]=gosa_move(cur_obs,start.',ang_wp,u(1,1));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(gosa_obs,rand_size);
 obs=ob.';
-
-potential_cdc(p_i)=potential(glo_obs,start.',glo_rand_size);
-p_i=p_i+1;
 
 save('potential_cdc.mat','glo_obs','glo_rand_size','drive_cdc');
 
