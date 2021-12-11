@@ -17,6 +17,7 @@ end
 obs=ob_round(glo_gosa_obs,glo_rand_size);
 path=AStar(obs,p);
 graph(glo_gosa_obs,p,glo_rand_size);
+path=PathSmoothing(path);
 if length(path)>=1
     plot(path(:,1),path(:,2),'-r','MarkerSize',3);
     hold on;
@@ -28,24 +29,6 @@ for io=1:length(glo_obs(1,:))
   hold on;
 end
 
-%% スプライン補間
-wp_x=path(:,1);
-wp_y=path(:,2);
-yy=0:.1:max(wp_y);
-sp=spline(wp_y,wp_x,yy);
-plot(sp,yy,'g:.','MarkerSize',3);
-hold on;
-
-%% ラグランジェ補間
-for yy=0:.1:max(wp_y)
- lag=lagrange(yy,wp_y,wp_x);
- plot(lag,yy,'k:.','MarkerSize',3);
- hold on;
- % ニュートン補間
- ne=newtonPol(wp_y,wp_x,yy);
- plot(ne,yy,'y:.','MarkerSize',3);
- hold on;
-end
 
 %% 誤差モデル計算　
 %距離による関係性を考えた。
@@ -87,19 +70,6 @@ function graph(glo_gosa_obs,p,size)
 end
 
 
-%% 二点間のプロット
-function f_twopoint(af_start,bef_start)
-  A=[bef_start(1,1) 1;
-     af_start(1,1) 1];
-  B=[bef_start(2,1);
-     af_start(2,1)];
-  X=linsolve(A,B);
-  a=X(1,1);
-  b=X(2,1);
-  y=linspace(bef_start(2,1),af_start(2,1));
-  plot((y-b)/a,y,'r:.','MarkerSize',3);
-  hold on;
-end
 
 %% アニメーション　円の作成
 %下三つは円の塗りつぶし
@@ -112,13 +82,6 @@ end
 function a=en_plot_red(glo_obs,size)
  [x,y]=circle(glo_obs(1,1),glo_obs(1,2),size);
  a=fill(x,y,'r');
- hold on;
-end
-
-function b=en_plot_orange(glo_obs,size)
- orange=[0.9500 0.6250 0];%オレンジ
- [x,y]=circle(glo_obs(1,1),glo_obs(1,2),size);
- b=fill(x,y,orange);
  hold on;
 end
 
@@ -302,57 +265,25 @@ function [flag, targetInd]=FindList(m,open,close)
     flag=3;return;
 end
 
-%% lagrange補間
-function y=lagrange(x,pointx,pointy)
-%
-%LAGRANGE   approx a point-defined function using the Lagrange polynomial interpolation
-%
-%      LAGRANGE(X,POINTX,POINTY) approx the function definited by the points:
-%      P1=(POINTX(1),POINTY(1)), P2=(POINTX(2),POINTY(2)), ..., PN(POINTX(N),POINTY(N))
-%      and calculate it in each elements of X
-%
-%      If POINTX and POINTY have different number of elements the function will return the NaN value
-%
-%      function wrote by: Carlo Castoldi carlo.castoldi(at)gmail.com
-%      7-oct-2001
-%
-n=size(pointx,2);
-L=ones(n,size(x,2));
-if (size(pointx,2)~=size(pointy,2))
-   fprintf(1,'\nERROR!\nPOINTX and POINTY must have the same number of elements\n');
-   y=NaN;
-else
-   for i=1:n
-      for j=1:n
-         if (i~=j)
-            L(i,:)=L(i,:).*(x-pointx(j))/(pointx(i)-pointx(j));
-         end
-      end
-   end
-   y=0;
-   for i=1:n
-      y=y+pointy(i)*L(i,:);
-   end
-end
+%% path 平滑化
+
+function optPath=PathSmoothing(path)
+optPath=path;%元のパスをコピー
+
+%平準化パラメータ
+alpha=0.5;
+beta=0.2;
+
+torelance=0.00001;%パスの変化量の閾値(変化量がこの値以下の時平滑化を終了)
+change=torelance;%パスの位置の変化量
+while change>=torelance 
+    change=0;%初期化
+    for ip=2:(length(path(:,1))-1) %始点と終点は固定
+        prePath=optPath(ip,:);%変化量計測用
+        optPath(ip,:)=optPath(ip,:)-alpha*(optPath(ip,:)-path(ip,:));
+        optPath(ip,:)=optPath(ip,:)-beta*(2*optPath(ip,:)-optPath(ip-1,:)-optPath(ip+1,:));
+        change=change+norm(optPath(ip,:)-prePath);
+    end
 end
 
-%%  newton補間
-function yh=newtonPol(x,y,xh)
-n=length(x);
-p(:,1)=x;
-p(:,2)=y;
-for j=3:n+1
-    p(1:n+2-j,j)=diff(p(1:n+3-j,j-1))./(x(j-1:n)-x(1:n+2-j))';  %求差商表  （注意这里有一个 ’ 符号，与差商表不一样的地方）
-end
-q=p(1,2:n+1)';  %求牛顿法的系数--取第一行
-yh=0;
-m=1;
-yh=q(1);
-for i=2:n
-    m=q(i);
-    for j=2:i
-        m=m*(xh-x(j-1));  %求牛顿法中各多项式值(xh-x0)…(xh-xn-1)
-    end
-    yh=yh+m;%求和
-end
 end
