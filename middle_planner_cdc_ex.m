@@ -77,15 +77,15 @@ p_in=0;
 
 %ナビゲーション
 while 1
-   [p.start,up_obs]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path);
+   [p.start,up_obs,gosa_obs]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path);
    l=len(wp(:,i).',p.start.');
    delete(kill);
    delete(point);
    delete(kill_point);
    if count>1
-     delete(b);%逐次的に処理を削除(現在のLM座標(障害物))
-     delete(w);
+     %逐次的に処理を削除(現在のLM座標(障害物))
      delete(kill_p);
+     delete(w);
    end
    %wpでのsaferateを計算→前原さん、宮本さん参照
    p_init(i)=potential(glo_obs,wp_init(:,i),glo_rand_size);
@@ -107,7 +107,9 @@ while 1
    save('A_matrix.mat','k_A','Matrix_error','Plan_error','p_cdc','p_cd','p_init','p_in');
    count=count+1;
    for j=i:length(wp(1,:))-1
-       kill_p(:,j)=twopoint(wp(:,j+1),wp(:,j));
+       kill_p_ex=twopoint(wp(:,j+1),wp(:,j));
+       w(j)=plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
+       kill_p(j-i+1,:)=kill_p_ex;
    end
    pause(0.001);
 end
@@ -157,22 +159,18 @@ end
 
 %誤差をロボット進行方向に考えて表示
 function [up_obs]=gosa_move(obs,start,ang_wp,v)
+ [slip_x,slip_y]=sliprate(ang_wp,v);
  for i=1:length(obs(1,:))
     r(i)=len(obs(:,i).',start.');
     if r(i)<1
         r(i)=0;
     end
     l(i)=18.5*10^-2*r(i)^2*0.01;
-    x_ran=-0.01+0.01*rand;%キャリブレーションや分解能での誤差を考える
-    y_ran=-0.01+0.01*rand;
-    error(1,i)=x_ran;
-    error(2,i)=l(i)+y_ran;
-    ang_wp=ang_wp-pi/2;
-    error(:,i)=[cos(ang_wp),-sin(ang_wp);
-            sin(ang_wp),cos(ang_wp)]*error(:,i);
-    up_obs(1,i)=error(1,i)+obs(1,i);
-    up_obs(2,i)=error(2,i)+obs(2,i);
-    up_obs(:,i)=sliprate(up_obs(:,i),ang_wp,v);
+    error=l(i);
+    error_x=cos(ang_wp)*error;
+    error_y=sin(ang_wp)*error;
+    up_obs(1,i)=error_x+obs(1,i)+slip_x;
+    up_obs(2,i)=error_y+obs(2,i)+slip_y;
     
  end
     up_obs(3,:)=1;
@@ -371,7 +369,7 @@ function [r_x,r_y]=circle(x,y,r)
 end
 
 %% スリップ率導入
-function ex=sliprate(cur_obs,ang,v)
+function [x,y]=sliprate(ang,v)
  global dt; 
  global slip;
  s=randi(1)/100;
@@ -380,8 +378,6 @@ function ex=sliprate(cur_obs,ang,v)
  slip=slip+slip_length;
  x=slip*cos(ang);
  y=slip*sin(ang);
- ex(2,1)=cur_obs(2,1)-y;
- ex(1,1)=cur_obs(1,1)-x;
 end
 
 %% 障害物の円を座標格納
@@ -397,13 +393,12 @@ end
 end
 
 %% local plan
-function [s,up_obs] = DynamicWindowApproachSample_k(start,goal,obstacle,path)
+function [s,up_obs,gosa_obs] = DynamicWindowApproachSample_k(start,goal,obstacle,path)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
-global p_i;
 global drive_cdc;
 obstacleR=0.2;%衝突判定用の障害物の半径
 global dt; 
@@ -424,7 +419,6 @@ result.x=[];
 for i=1:5000
 %DWAによる入力値の計算
 [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR,path);
-disp(u);
 x=f(x,u);%運動モデルによる移動
 
 %シミュレーション結果の保存
@@ -433,7 +427,7 @@ start=[x(1),x(2)];
 s_x=[x(1);x(2)];
 drive_cdc=[drive_cdc s_x];
 [ang_wp,sen_num,cur_obs]=sensor_range(glo_obs,start.',goal.');
-[up_obs]=gosa_move(cur_obs,start.',ang_wp,u(1,1));
+[up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(gosa_obs,rand_size);
 obs=ob.';
