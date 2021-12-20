@@ -1,4 +1,5 @@
 %% 軌道補正アルゴリズム
+clear all;
 global cdc_length;
 cdc_length=0.5;%m単位で補正ポイントを設定
 global glo_obs;
@@ -7,7 +8,7 @@ global glo_rand_size;
 %% パラメータ設定
 p.start=[0;0];
 p.goal=[0;100];
-for i=1:250
+for i=1:320
     ran_x=-50+100*rand;
     ran_y=100*rand;
     glo_rand_size(i)=0.3+1.4*rand;
@@ -140,7 +141,7 @@ result.x=[result.x; x'];
 start=[x(1),x(2)];
 s_x=[x(1);x(2)];
 drive_cdc=[drive_cdc s_x];
-save('path_interp.mat','drive_cdc','glo_obs','glo_gosa_obs','glo_rand_size');
+save('path_interp_5.mat','drive_cdc','glo_obs','glo_gosa_obs','glo_rand_size');
 if i>1
     delete(d_q);
     delete(d_g);
