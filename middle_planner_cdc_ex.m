@@ -1,4 +1,5 @@
 %% 読み込みとプロット
+clear all;
 global cdc_length;
 cdc_length=0.5;%m単位で補正ポイントを設定
 global glo_obs;
@@ -11,10 +12,11 @@ global slip;
 slip=0;
 past_obs=[];
 dt=0;
-drive_cdc=[];
+
 load("path_interp.mat");
+path=drive_cdc;
+drive_cdc=[];
 p.start=[0;0];
-p.goal=[0;20];
 
 graph(glo_gosa_obs,p,glo_rand_size);
 
@@ -24,28 +26,36 @@ for io=1:length(glo_obs(1,:))
 end
 
 if length(path)>=1
-    plot(path(:,1),path(:,2),'-r','MarkerSize',3);
+    plot(path(1,:),path(2,:),'-r','MarkerSize',3);
     hold on;
 end
 hold on;
 
 %% 曲率
-wp_x=flip(path(:,1));
-wp_y=flip(path(:,2));
+wp_x=path(1,:).';
+wp_y=path(2,:).';
 p_wp=[wp_x,wp_y];
 [L2,R2,K2] = curvature(p_wp);
-%quiver(wp_x,wp_y,K2(:,1),K2(:,2));
+quiver(wp_x,wp_y,K2(:,1),K2(:,2));
 hold on;
-
 j=1;
+
+wp=zeros(2,5000);
 for i=2:length(wp_x)-1
-    if K2(i,1) ~= 0 && K2(i,2) ~= 0 
-        wp(:,j)=[wp_x(i);wp_y(i)];
-        j=j+1;
+    if abs(K2(i,1)) > 3 && abs(K2(i,2)) > 3
+     wp(:,j)=[wp_x(i);wp_y(i)];
+     j=j+1;
     end
 end
 
-wp = [wp p.goal];
+for i=1:length(wp(1,:))
+ if  wp(1,i) == 0 && wp(2,i) == 0 
+    wp(:,i)=[];
+    break;
+ end
+end
+    
+wp = [wp p_wp(size(path),:)];
 
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
@@ -240,8 +250,8 @@ function graph(glo_gosa_obs,p,size)
     grid on;
     xlabel('x[m]')
     ylabel('y[m]')
-    xlim([-10 10]);
-    ylim([0 20]);
+    xlim([-50 50]);
+    ylim([0 100]);
 end
 
 %% ロボットが観測せず移動している間の軌跡のプロット
