@@ -1,11 +1,18 @@
 %% 読み込みとプロット
+clear all;
 global cdc_length;
 cdc_length=0.5;%m単位で補正ポイントを設定
 global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
-load("path_interp.mat");
+global dt;
+global slip;
+slip=0;
+dt=0;
+load("path_interp_6.mat");
 global drive;
+global p_i;
+p_i=1;
 drive=[];
 p.start=[0;0];
 p.goal=[0;20];
@@ -15,19 +22,20 @@ for io=1:length(glo_obs(1,:))
   en_plot_red(glo_obs(:,io).',glo_rand_size(io));
   hold on;
 end
-
+path=drive_cdc;
 if length(path)>=1
-    plot(path(:,1),path(:,2),'-r','MarkerSize',3);
+    plot(path(1,:),path(2,:),'-r','MarkerSize',3);
     hold on;
 end
 hold on;
 
 %% 曲率
+%{
 wp_x=flip(path(:,1));
 wp_y=flip(path(:,2));
 p_wp=[wp_x,wp_y];
 [L2,R2,K2] = curvature(p_wp);
-%quiver(wp_x,wp_y,K2(:,1),K2(:,2));
+quiver(wp_x,wp_y,K2(:,1),K2(:,2));
 hold on;
 
 j=1;
@@ -39,7 +47,8 @@ for i=2:length(wp_x)-1
 end
 
 wp=[wp p.goal];
-
+%}
+load("wp.mat");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -65,31 +74,29 @@ sr=0;
 p_cdc=0;
 p_cd=0;
 p_init=0;
-p_i=0;
+p_in=0;
+obs=ob_round(glo_gosa_obs,glo_rand_size);
 
 %ナビゲーション
 while 1
-   p.start=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path);
+   p.start=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.');
    l=len(wp(:,i).',p.start.');
-   delete(kill);
-   delete(point);
-   delete(kill_point);
+   if count==1
+    delete(kill);
+    delete(point);
+    delete(kill_point);
+   end
    if count>1
      delete(b);%逐次的に処理を削除(現在のLM座標(障害物))
      delete(w);
    end
    %wpでのsaferateを計算→前原さん、宮本さん参照
    p_init(i)=potential(glo_obs,wp_init(:,i),glo_rand_size);
-   p_i=sum(p_init)/i;%ポテンシャル場の平均走行前軌道
+   p_in=sum(p_init)/i;%ポテンシャル場の平均走行前軌道
    p_cdc(i)=potential(glo_obs,wp(:,i),glo_rand_size);
    p_cd=sum(p_cdc)/i;%走行後のパテンシャル場の平均
    i=i+1;
-  
-   [ang_wp,sen_num,obs]=sensor_range(glo_obs,p.start,wp(:,i));
-   [up_obs]=gosa_move(obs,p.start,ang_wp);
-   [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
-   obs=ob_round(gosa_obs,rand_size);
-   [b,w]=animation(up_obs,wp,p,i,rand_size);
+   %[b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成
    if len(wp(:,length(wp(1,:))).',p.start.')<0.7 
        fx(wp(:,i),p.start);
@@ -100,16 +107,6 @@ while 1
    pause(0.001);
 end
 
-%% 逐次的に進むローバの角度算出と走行距離の決定
-function start=move_rover(start,wp)
-   global cdc_length;
-   r=cdc_length;%進む距離を調整
-   ang=angular(wp,start);
-   bef_start=start;
-   start(1,1)=r*cos(ang)+start(1,1);
-   start(2,1)=r*sin(ang)+start(2,1);
-   fx(start,bef_start);
-end
 
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
@@ -128,42 +125,34 @@ end
 %% 誤差モデル計算　
 %距離による関係性を考えた。
 %これはDEMのステレオデータによる誤差を主に考えた。
-function [up_obs]=gosamodel(obs,p)
- for i=1:length(obs(1,:))
-    r(i)=len(obs(:,i).',p.start.');
-    if r(i)<1
-        r(i)=0;
-    end
-    l(i)=18.5*10^-2*r(i)^2*0.01;
-    x_ran=-0.01+0.02*rand; %キャリブレーションや分解能での誤差を考える
-    y_ran=-0.01+0.02*rand;
-    up_obs(1,i)=obs(1,i)+x_ran;
-    up_obs(2,i)=obs(2,i)+l(i)+y_ran;
-end
-    up_obs(3,:)=1;
-end
 
 %誤差をロボット進行方向に考えて表示
-function [up_obs]=gosa_move(obs,start,ang_wp)
+function [up_obs]=gosa_move(obs,start,ang_wp,v)
+ [slip_x,slip_y]=sliprate(ang_wp,v);
  for i=1:length(obs(1,:))
     r(i)=len(obs(:,i).',start.');
     if r(i)<1
         r(i)=0;
     end
     l(i)=18.5*10^-2*r(i)^2*0.01;
-    x_ran=-0.01+0.01*rand;%キャリブレーションや分解能での誤差を考える
-    y_ran=-0.01+0.01*rand;
-    up_obs(1,i)=x_ran;
-    up_obs(2,i)=l(i)+y_ran;
-    ang_wp=ang_wp-pi/2;
-    up_obs(:,i)=[cos(ang_wp),-sin(ang_wp);
-            sin(ang_wp),cos(ang_wp)]*up_obs(:,i);
-    up_obs(1,i)=up_obs(1,i)+obs(1,i);
-    up_obs(2,i)=up_obs(2,i)+obs(2,i);
-    up_obs(:,i)=sliprate(up_obs(:,i),ang_wp);
-    
+    error=l(i);
+    error_x=cos(ang_wp)*error;
+    error_y=sin(ang_wp)*error;
+    up_obs(1,i)=error_x+obs(1,i)+slip_x;
+    up_obs(2,i)=error_y+obs(2,i)+slip_y;
  end
-    up_obs(3,:)=1;
+end
+
+%% スリップ率導入
+function [x,y]=sliprate(ang,v)
+ global dt; 
+ global slip;
+ s=randi(60)/100;
+ v_real=(1-s)*v;
+ slip_length=(v_real-v)*dt;
+ slip=slip+slip_length;
+ x=slip*cos(ang);
+ y=slip*sin(ang);
 end
 
 %% 逐次的なアニメーション
@@ -184,41 +173,6 @@ function l=len(a,b)
 l=norm(a-b);
 end
 
-%% 軌道補正計算
-function [awp,k,mat_er,plan_er]=correction(lm_current,lm_first,p,i)
-    global wp_init;
-    A=lm_current*pinv(lm_first);
-    wp(3,:)=1;
-    A(3,1)=0;
-    A(3,2)=0;
-    global A_n;
-    if isempty(A_n)==0
-     [mat_er,plan_er] = A_matrix(A,lm_current,lm_first,A_n);
-    else
-        mat_er=0;
-        plan_er=0;
-    end
-    A_n=A;
-   for j=i:length(wp_init(1,:))
-       wp(1,j)=wp_init(1,j)-p.start(1,1);
-       wp(2,j)=wp_init(2,j)-p.start(2,1);
-   end
-   for i=1:length(wp(1,:))
-      awp(:,i)=A()*wp(:,i);
-   end
-   awp(1,:)=awp(1,:)+p.start(1,1);
-   awp(2,:)=awp(2,:)+p.start(2,1);
-   awp(3,:)=[];
-   k=cond(A,2);
-end
-
-%% A行列解析
-%カリタニさん参照
-%ネットに条件数とかの同じような説明ありそちらも参照可能
-function [mat_er,plan_er]=A_matrix(A,lm_c,lm_f,A_n)
-  mat_er = cond(A)*norm(A*lm_f-lm_c)/norm(A*lm_f);
-  plan_er = cond(A_n)*norm(A_n-A)/norm(A_n);
-end
 
 %% センサ検知前位置のグラフを表示
 function graph(glo_gosa_obs,p,size)
@@ -230,8 +184,8 @@ function graph(glo_gosa_obs,p,size)
     grid on;
     xlabel('x[m]')
     ylabel('y[m]')
-    xlim([-10 10]);
-    ylim([0 20]);
+    xlim([-50 50]);
+    ylim([0 100]);
 end
 
 %% ロボットが観測せず移動している間の軌跡のプロット
@@ -358,14 +312,7 @@ function [r_x,r_y]=circle(x,y,r)
  r_y=r*sin(t)+y;
 end
 
-%% スリップ率導入
-function ex=sliprate(cur_obs,ang)
- r=(randi(4)-1)/10;
- x=r*cos(ang);
- y=r*sin(ang);
- ex(2,1)=cur_obs(2,1)-y;
- ex(1,1)=cur_obs(1,1)-x;
-end
+
 
 function obs=ob_round(cur_obs,r)
 for i=1:length(r)
@@ -379,7 +326,7 @@ end
 end
 
 %% local plan
-function s = DynamicWindowApproachSample_k(start,goal,obstacle,path)
+function [s,up_obs,gosa_obs] = DynamicWindowApproachSample_k(start,goal,obstacle,path)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 
@@ -390,6 +337,7 @@ global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
 global drive;
+global p_i;
 %ロボットの力学モデル
 %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
 % 速度解像度[m/s],回頭速度解像度[rad/s]]
@@ -414,7 +362,7 @@ s_x=[x(1);x(2)];
 drive=[drive s_x];
 
 [ang_wp,sen_num,cur_obs]=sensor_range(glo_obs,start.',goal.');
-[up_obs]=gosa_move(cur_obs,start.',ang_wp);
+[up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(gosa_obs,rand_size);
 obs=ob.';
@@ -584,7 +532,7 @@ end
 function path_dist=CalcPathDistEval(x,path)
 
 theta=toDegree(x(3));
-for i=1:length(path(1,:))
+for i=1:length(path(:,1))
     if path(i,2)>x(2)
         Goal_path=[path(i+7,1),path(i+7,2)];
         break;

@@ -7,13 +7,11 @@ global glo_gosa_obs;
 global glo_rand_size;
 global drive_cdc;
 global dt;
-global past_obs;
 global slip;
 slip=0;
-past_obs=[];
 dt=0;
 
-load("path_interp.mat");
+load("path_interp_6.mat");
 path=drive_cdc;
 drive_cdc=[];
 p.start=[0;0];
@@ -32,6 +30,11 @@ end
 hold on;
 
 %% 曲率
+
+[x,y]=ginput;
+wp=[x.';
+    y.'];
+%{
 wp_x=path(1,:).';
 wp_y=path(2,:).';
 p_wp=[wp_x,wp_y];
@@ -40,33 +43,31 @@ quiver(wp_x,wp_y,K2(:,1),K2(:,2));
 hold on;
 j=1;
 
-wp=zeros(2,5000);
-for i=2:length(wp_x)-1
-    if abs(K2(i,1)) > 3 && abs(K2(i,2)) > 3
-     wp(:,j)=[wp_x(i);wp_y(i)];
+con_wp_x=[];
+con_wp_y=[];
+for i=1:length(wp_x)
+    if abs(K2(i,1)) > 1 || abs(K2(i,2)) > 1 || i==length(wp_x)
+     con_wp_x(j)=wp_x(i);
+     con_wp_y(j)=wp_y(i);
      j=j+1;
     end
 end
-
-for i=1:length(wp(1,:))
- if  wp(1,i) == 0 && wp(2,i) == 0 
-    wp(:,i)=[];
-    break;
- end
-end
-    
-wp = [wp p_wp(size(path),:)];
-
+   
+wp = [con_wp_x;con_wp_y];
+%}
+save("wp.mat","wp");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
 end
 
 point=twopoint(wp(:,1),p.start);
+kill_point=zeros(100,5000);
 for i=1:length(wp(1,:))-1
-  kill_ex=twopoint(wp(:,i+1),wp(:,i));
-  kill_point(i,:)=kill_ex;
+   kill_point(:,i)=twopoint(wp(:,i+1),wp(:,i));
 end
+kill_point(length(wp(:,1)),:)=[];
+    
 pause();
 
 global wp_init;
@@ -84,14 +85,17 @@ p_cdc=0;
 p_cd=0;
 p_init=0;
 p_in=0;
+obs=ob_round(glo_gosa_obs,glo_rand_size);
 
 %ナビゲーション
 while 1
-   [p.start,up_obs,gosa_obs]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path);
+   [p.start,up_obs,gosa_obs]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.');
    l=len(wp(:,i).',p.start.');
+   if count==1
    delete(kill);
    delete(point);
    delete(kill_point);
+   end
    if count>1
      %逐次的に処理を削除(現在のLM座標(障害物))
      delete(kill_p);
@@ -124,16 +128,6 @@ while 1
    pause(0.001);
 end
 
-%% 逐次的に進むローバの角度算出と走行距離の決定
-function start=move_rover(start,wp)
-   global cdc_length;
-   r=cdc_length;%進む距離を調整
-   ang=angular(wp,start);
-   bef_start=start;
-   start(1,1)=r*cos(ang)+start(1,1);
-   start(2,1)=r*sin(ang)+start(2,1);
-   fx(start,bef_start);
-end
 
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
@@ -152,20 +146,6 @@ end
 %% 誤差モデル計算　
 %距離による関係性を考えた。
 %これはDEMのステレオデータによる誤差を主に考えた。
-function [up_obs]=gosamodel(obs,p)
- for i=1:length(obs(1,:))
-    r(i)=len(obs(:,i).',p.start.');
-    if r(i)<1
-        r(i)=0;
-    end
-    l(i)=18.5*10^-2*r(i)^2*0.01;
-    x_ran=-0.01+0.02*rand; %キャリブレーションや分解能での誤差を考える
-    y_ran=-0.01+0.02*rand;
-    up_obs(1,i)=obs(1,i)+x_ran;
-    up_obs(2,i)=obs(2,i)+l(i)+y_ran;
-end
-    up_obs(3,:)=1;
-end
 
 %誤差をロボット進行方向に考えて表示
 function [up_obs]=gosa_move(obs,start,ang_wp,v)
@@ -184,6 +164,18 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
     
  end
     up_obs(3,:)=1;
+end
+
+%% スリップ率導入
+function [x,y]=sliprate(ang,v)
+ global dt; 
+ global slip;
+ s=randi(60)/100;
+ v_real=(1-s)*v;
+ slip_length=(v_real-v)*dt;
+ slip=slip+slip_length;
+ x=slip*cos(ang);
+ y=slip*sin(ang);
 end
 
 %% 逐次的なアニメーション
@@ -378,17 +370,7 @@ function [r_x,r_y]=circle(x,y,r)
  r_y=r*sin(t)+y;
 end
 
-%% スリップ率導入
-function [x,y]=sliprate(ang,v)
- global dt; 
- global slip;
- s=randi(1)/100;
- v_real=(1-s)*v;
- slip_length=(v_real-v)*dt;
- slip=slip+slip_length;
- x=slip*cos(ang);
- y=slip*sin(ang);
-end
+
 
 %% 障害物の円を座標格納
 function obs=ob_round(cur_obs,r)
@@ -609,7 +591,7 @@ end
 function path_dist=CalcPathDistEval(x,path)
 
 theta=toDegree(x(3));
-for i=1:length(path(1,:))
+for i=1:length(path(:,1))
     if path(i,2)>x(2)
         Goal_path=[path(i+7,1),path(i+7,2)];
         break;
