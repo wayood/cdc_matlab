@@ -3,11 +3,14 @@ load('potential_cdc.mat');%軌道補正込み
 Potential_Field(glo_obs,glo_rand_size);
 hold on;
 %% 三次元的にポテンシャル場で評価
+%ここでは真の障害物に対しての安定性を補正ありなしで判別
+
 for i=1:length(drive(1,:))
     z(i)=potential(glo_obs,drive(:,i),glo_rand_size);
     plot3(drive(1,i)+11,drive(2,i),z(i),'o','Color','b');
     hold on;
 end
+
 for j=1:length(drive_cdc(1,:))
     z_cdc(j)=potential(glo_obs,drive_cdc(:,j),glo_rand_size);
     plot3(drive_cdc(1,j)+11,drive_cdc(2,j),z_cdc(j),'o','Color','r');
@@ -15,17 +18,24 @@ for j=1:length(drive_cdc(1,:))
 end
 
 %% 補正によるSafeRateを表現
-p_init=sum(z)/i;
-p_cdc=sum(z_cdc)/j;
-
-for i=1:length(p_init)
- sr_st1(i)=(z(i)-p_init).^2;
- sr_st2(i)=(z_cdc(i)-p_cdc).^2;
- sr_st(i)=(z(i)-p_init)*(z_cdc(i)-p_cdc);
+%SafeRateをGlobalpathでのポテンシャル遷移を計算
+for i=1:length(path(:,1))
+    z(i)=potential(glo_gosa_obs,path(i,:).',glo_rand_size);
 end
-sr=sum(sr_st)/sqrt(sum(sr_st1))/sqrt(sum(sr_st2));
-T=table(sr);
-T=T(1,1);
+p_init=sum(z)/i;
+
+%補正後のLocal軌道を
+for i=1:length(z)
+ sr_st_initial(i)=(z(i)-p_init).^2;
+ sr_st_cdc(i)=(po_cdc(i)-sum_po_cdc).^2;
+ sr_st_cdc_con(i)=(z(i)-p_init)*(po_cdc(i)-sum_po_cdc);
+ sr_st_nocdc(i)=(po(i)-sum_po).^2;
+ sr_st_nocdc_con(i)=(z(i)-p_init)*(po(i)-sum_po);
+end
+sr_cdc=sum(sr_st_cdc_con)/sqrt(sum(sr_st_initial))/sqrt(sum(sr_st_cdc));
+sr=sum(sr_st_nocdc_con)/sqrt(sum(sr_st_initial))/sqrt(sum(sr_st_nocdc));
+T=table(sr_cdc,sr);
+T=T(1,2);
 fig = uifigure;
 uit = uitable(fig,'Data',T);
 hold on;

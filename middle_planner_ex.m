@@ -11,8 +11,8 @@ slip=0;
 dt=0;
 load("path_interp_6.mat");
 global drive;
-global p_i;
-p_i=1;
+global po_i;
+po_i=1;
 drive=[];
 p.start=[0;0];
 p.goal=[0;20];
@@ -70,11 +70,6 @@ wp_init = wp;
 %初期化
 i=1;
 count=1;
-sr=0;
-p_cdc=0;
-p_cd=0;
-p_init=0;
-p_in=0;
 obs=ob_round(glo_gosa_obs,glo_rand_size);
 
 %ナビゲーション
@@ -90,11 +85,6 @@ while 1
      delete(b);%逐次的に処理を削除(現在のLM座標(障害物))
      delete(w);
    end
-   %wpでのsaferateを計算→前原さん、宮本さん参照
-   p_init(i)=potential(glo_obs,wp_init(:,i),glo_rand_size);
-   p_in=sum(p_init)/i;%ポテンシャル場の平均走行前軌道
-   p_cdc(i)=potential(glo_obs,wp(:,i),glo_rand_size);
-   p_cd=sum(p_cdc)/i;%走行後のパテンシャル場の平均
    i=i+1;
    %[b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成
@@ -337,7 +327,7 @@ global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
 global drive;
-global p_i;
+global po_i;
 %ロボットの力学モデル
 %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
 % 速度解像度[m/s],回頭速度解像度[rad/s]]
@@ -364,10 +354,12 @@ drive=[drive s_x];
 [ang_wp,sen_num,cur_obs]=sensor_range(glo_obs,start.',goal.');
 [up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
-ob=ob_round(gosa_obs,rand_size);
+ob=ob_round(up_obs,rand_size);
 obs=ob.';
-
-save('potential.mat','glo_obs','glo_rand_size','drive');
+po(po_i)=potential(up_obs,start.',rand_size);
+sum_po=sum(po)/po_i;
+po_i=po_i+1;
+save('potential.mat','drive','po','sum_po');
 if i>1
     delete(d_q);
     delete(d_g);

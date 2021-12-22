@@ -1,5 +1,6 @@
 %% 読み込みとプロット
 clear all;
+
 global cdc_length;
 cdc_length=0.5;%m単位で補正ポイントを設定
 global glo_obs;
@@ -8,6 +9,8 @@ global glo_rand_size;
 global drive_cdc;
 global dt;
 global slip;
+global po_i;
+po_i=1;
 slip=0;
 dt=0;
 
@@ -80,11 +83,6 @@ p_i=1;
 %初期化
 i=1;
 count=1;
-sr=0;
-p_cdc=0;
-p_cd=0;
-p_init=0;
-p_in=0;
 obs=ob_round(glo_gosa_obs,glo_rand_size);
 
 %ナビゲーション
@@ -101,11 +99,6 @@ while 1
      delete(kill_p);
      delete(w);
    end
-   %wpでのsaferateを計算→前原さん、宮本さん参照
-   p_init(i)=potential(glo_obs,wp_init(:,i),glo_rand_size);
-   p_in=sum(p_init)/i;%ポテンシャル場の平均走行前軌道
-   p_cdc(i)=potential(glo_obs,wp(:,i),glo_rand_size);
-   p_cd=sum(p_cdc)/i;%走行後のパテンシャル場の平均
    i=i+1;
    %[b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成
@@ -118,7 +111,6 @@ while 1
    k_A(count)=k;
    Matrix_error(count)=mat_er;
    Plan_error(count)=plan_er;
-   save('A_matrix.mat','k_A','Matrix_error','Plan_error','p_cdc','p_cd','p_init','p_in');
    count=count+1;
    for j=i:length(wp(1,:))-1
        kill_p_ex=twopoint(wp(:,j+1),wp(:,j));
@@ -132,6 +124,9 @@ end
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
     po=0;
+    if obs(3,:)==1
+        obs(3,:)=[];
+    end
     for i=1:obs(1,:)
      l=len(obs(:,i).',move.');
      if l < size(i)
@@ -394,6 +389,7 @@ global glo_rand_size;
 global drive_cdc;
 obstacleR=0.2;%衝突判定用の障害物の半径
 global dt; 
+global po_i;
 dt=0.1;%刻み時間[s]
 
 %ロボットの力学モデル
@@ -421,10 +417,12 @@ drive_cdc=[drive_cdc s_x];
 [ang_wp,sen_num,cur_obs]=sensor_range(glo_obs,start.',goal.');
 [up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
-ob=ob_round(gosa_obs,rand_size);
+ob=ob_round(up_obs,rand_size);
 obs=ob.';
-
-save('potential_cdc.mat','glo_obs','glo_rand_size','drive_cdc');
+po_cdc(po_i)=potential(up_obs,start.',rand_size);
+sum_po_cdc=sum(po_cdc)/po_i;
+po_i=po_i+1;
+save('potential_cdc.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
 
 if i>1
     delete(d_q);
