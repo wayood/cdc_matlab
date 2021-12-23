@@ -124,6 +124,18 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
  end
 end
 
+%蓄積誤差を保存
+function [up_obs]=gosa_hozon(obs,ang_wp,v)
+ [slip_x,slip_y]=sliprate(ang_wp,v);
+ if obs(3,:) == 1
+     obs(3,:)=[];
+ end
+ for i=1:length(obs(1,:))
+    up_obs(1,i)=obs(1,i)+slip_x;
+    up_obs(2,i)=obs(2,i)+slip_y;
+ end
+ up_obs(3,:)=1;
+end
 %% スリップ率導入
 function [x,y]=sliprate(ang,v)
  global dt; 
@@ -169,6 +181,13 @@ function graph(glo_gosa_obs,p,size)
     ylim([0 100]);
 end
 
+%% 誤差を明確化ラインプロット
+function kill=cdc_obs_line(lm_first,lm_current)
+for i=1:length(lm_first(1,:))
+    kill(i)=twopoint(lm_current(:,i),lm_first(:,i));
+end
+end
+
 %% ロボットが観測せず移動している間の軌跡のプロット
 function fx(af_start,bef_start)
     A=[bef_start(1,1) 1;
@@ -210,6 +229,7 @@ end
 function [ang_wp,sen_num,sen_obs]=sensor_range(obs,start,wp)
    %視野の射程距離
    range_base=50;
+   obs(3,:)=[];
    for i=1:length(obs(1,:))
      [ang_wp,range_wpbase_max,range_wpbase_min,range_s,range_ln]=siya(obs(:,i),start,wp);
      if start(2,1)>obs(2,i) 
@@ -337,6 +357,7 @@ if i==1
     [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR,path);
 else
     [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obs,obstacleR,path);
+    delete(kill_line);
 end
 x=f(x,u);%運動モデルによる移動
 %シミュレーション結果の保存
@@ -345,12 +366,13 @@ result.x=[result.x; x'];
 start=[x(1),x(2)];
 s_x=[x(1);x(2)];
 drive=[drive s_x];
-
-[ang_wp,sen_num,cur_obs]=sensor_range(glo_obs,start.',goal.');
+[me_gosa_obs]=gosa_hozon(glo_gosa_obs,x(3),u(1,1));
+[ang_wp,sen_num,cur_obs]=sensor_range(me_gosa_obs,start.',goal.');
 [up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(up_obs,rand_size);
 obs=ob.';
+kill_line=cdc_obs_line(gosa_obs,up_obs);
 po(po_i)=potential(up_obs,start.',rand_size);
 sum_po=sum(po)/po_i;
 po_i=po_i+1;
@@ -369,6 +391,7 @@ end
 %ゴール判定
 if norm(x(1:2)-goal')<1.0
     disp('Arrive Goal!!');
+    delete(kill_line);
     s=[x(1);x(2)];
     delete(b);
     break;
