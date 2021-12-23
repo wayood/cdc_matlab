@@ -76,15 +76,6 @@ obs=ob_round(glo_gosa_obs,glo_rand_size);
 while 1
    p.start=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.');
    l=len(wp(:,i).',p.start.');
-   if count==1
-    delete(kill);
-    delete(point);
-    delete(kill_point);
-   end
-   if count>1
-     delete(b);%逐次的に処理を削除(現在のLM座標(障害物))
-     delete(w);
-   end
    i=i+1;
    %[b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成
@@ -101,7 +92,7 @@ end
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
     po=0;
-    for i=1:obs(1,:)
+    for i=1:length(obs(1,:))
      l=len(obs(:,i).',move.');
      if l < size(i)
        p=(3-l.^2/size(i).^2)/2;

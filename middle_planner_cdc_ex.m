@@ -1,8 +1,5 @@
 %% 読み込みとプロット
 clear all;
-
-global cdc_length;
-cdc_length=0.5;%m単位で補正ポイントを設定
 global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
@@ -13,11 +10,11 @@ global po_i;
 po_i=1;
 slip=0;
 dt=0;
-
 load("path_interp_6.mat");
 path=drive_cdc;
 drive_cdc=[];
 p.start=[0;0];
+
 
 graph(glo_gosa_obs,p,glo_rand_size);
 
@@ -127,7 +124,7 @@ function po=potential(obs,move,size)
     if obs(3,:)==1
         obs(3,:)=[];
     end
-    for i=1:obs(1,:)
+    for i=1:length(obs(1,:))
      l=len(obs(:,i).',move.');
      if l < size(i)
        p=(3-l.^2/size(i).^2)/2;
@@ -404,11 +401,11 @@ evalParam=[0.1,0.2,0.1,3.0];
 result.x=[];
 %tic;
 % Main loop
+
 for i=1:5000
 %DWAによる入力値の計算
 [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR,path);
 x=f(x,u);%運動モデルによる移動
-
 %シミュレーション結果の保存
 result.x=[result.x; x'];
 start=[x(1),x(2)];
@@ -419,11 +416,11 @@ drive_cdc=[drive_cdc s_x];
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(up_obs,rand_size);
 obs=ob.';
-po_cdc(po_i)=potential(up_obs,start.',rand_size);
+
+po_cdc(po_i)=potential(up_obs,s_x,rand_size);
 sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
 save('potential_cdc.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
-
 if i>1
     delete(d_q);
     delete(d_g);

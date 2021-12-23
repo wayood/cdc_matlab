@@ -1,6 +1,5 @@
-function []=Potential_Field(obs,R)
-x=20;
-y=20;
+function []=Potential_Field(obs,R,x,y)
+
 x_p=-x/2:x/2;
 y_p=0:y;
 for i=1:x
