@@ -333,7 +333,11 @@ result.x=[];
 % Main loop
 for i=1:5000
 %DWAによる入力値の計算
-[u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR,path);
+if i==1
+    [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR,path);
+else
+    [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obs,obstacleR,path);
+end
 x=f(x,u);%運動モデルによる移動
 %シミュレーション結果の保存
 result.x=[result.x; x'];
