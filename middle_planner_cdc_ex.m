@@ -174,7 +174,7 @@ end
 function [x,y]=sliprate(ang,v)
  global dt; 
  global slip;
- s=randi(60)/100;
+ s=randi(30)/100;
  v_real=(1-s)*v;
  slip_length=(v_real-v)*dt;
  slip=slip+slip_length;
@@ -440,7 +440,13 @@ result.x=[result.x; x'];
 start=[x(1),x(2)];
 s_x=[x(1);x(2)];
 drive_cdc=[drive_cdc s_x];
-[me_gosa_obs]=gosa_hozon(glo_gosa_obs,x(3),u(1,1));
+
+if i==1
+    me_gosa_obs=glo_gosa_obs;
+else
+   [me_gosa_obs]=gosa_hozon(glo_gosa_obs,x(3),u(1,1));
+end
+
 [ang_wp,sen_num,cur_obs]=sensor_range(me_gosa_obs,start.',goal.');
 [up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);

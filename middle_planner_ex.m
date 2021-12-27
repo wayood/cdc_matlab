@@ -140,7 +140,7 @@ end
 function [x,y]=sliprate(ang,v)
  global dt; 
  global slip;
- s=randi(60)/100;
+ s=randi(30)/100;
  v_real=(1-s)*v;
  slip_length=(v_real-v)*dt;
  slip=slip+slip_length;
@@ -183,7 +183,7 @@ end
 
 %% 誤差を明確化ラインプロット
 function kill=cdc_obs_line(lm_first,lm_current)
-for i=1:length(lm_first(1,:))
+for i=1:length(lm_current(1,:))
     kill(i)=twopoint(lm_current(:,i),lm_first(:,i));
 end
 end
@@ -334,7 +334,6 @@ x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(ra
       
 obstacleR=0.2;%衝突判定用の障害物の半径
 global dt; dt=0.1;%刻み時間[s]
-global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
 global drive;
@@ -357,7 +356,6 @@ if i==1
     [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR,path);
 else
     [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obs,obstacleR,path);
-    delete(kill_line);
 end
 x=f(x,u);%運動モデルによる移動
 %シミュレーション結果の保存
@@ -366,13 +364,16 @@ result.x=[result.x; x'];
 start=[x(1),x(2)];
 s_x=[x(1);x(2)];
 drive=[drive s_x];
-[me_gosa_obs]=gosa_hozon(glo_gosa_obs,x(3),u(1,1));
+if i==1
+    me_gosa_obs=glo_gosa_obs;
+else
+    [me_gosa_obs]=gosa_hozon(glo_gosa_obs,x(3),u(1,1));
+end
 [ang_wp,sen_num,cur_obs]=sensor_range(me_gosa_obs,start.',goal.');
 [up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(up_obs,rand_size);
 obs=ob.';
-kill_line=cdc_obs_line(gosa_obs,up_obs);
 po(po_i)=potential(up_obs,start.',rand_size);
 sum_po=sum(po)/po_i;
 po_i=po_i+1;
@@ -391,7 +392,6 @@ end
 %ゴール判定
 if norm(x(1:2)-goal')<1.0
     disp('Arrive Goal!!');
-    delete(kill_line);
     s=[x(1);x(2)];
     delete(b);
     break;
