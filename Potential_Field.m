@@ -17,7 +17,7 @@ end
 
 function po=potential(obs,move,size)
   po=0;
-    for i=1:obs(1,:)+1
+    for i=1:length(obs(1,:))
      l=norm(obs(:,i).'- move.');
      if l < size(i)
        p=(3-l.^2/size(i).^2)/2;
