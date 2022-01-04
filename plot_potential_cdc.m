@@ -1,5 +1,5 @@
-load('potential.mat');%軌道補正なし
-load('potential_cdc.mat');%軌道補正込み
+load('potential_11.mat');%軌道補正なし
+load('potential_cdc_11.mat');%軌道補正込み
 x=100;
 y=100;
 Potential_Field(glo_obs,glo_rand_size,x,y);
@@ -29,14 +29,28 @@ end
 p_init=sum(z)/i;
 
 %補正後のLocal軌道を
+if length(po_cdc) <= length(z)
+    num=length(po_cdc);
+else
+    num=length(z);
+end
+
 for i=1:length(z)
  sr_st_initial(i)=(z(i)-p_init).^2;
 end
-for i=1:length(po_cdc)
+
+for i=1:num
  sr_st_cdc(i)=(po_cdc(i)-sum_po_cdc).^2;
  sr_st_cdc_con(i)=(z(i)-p_init)*(po_cdc(i)-sum_po_cdc);
 end
-for i=1:length(po)
+
+if length(po) <= length(z)
+    num=length(po);
+else
+    num=length(z);
+end
+
+for i=1:num
  sr_st_nocdc(i)=(po(i)-sum_po).^2;
  sr_st_nocdc_con(i)=(z(i)-p_init)*(po(i)-sum_po);
 end
