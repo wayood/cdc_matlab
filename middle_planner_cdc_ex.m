@@ -59,7 +59,7 @@ end
    
 wp = [con_wp_x;con_wp_y];
 %}
-save("wp_11_v1.mat","wp");
+save("wp_10_v1.mat","wp");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -415,7 +415,7 @@ global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
 global drive_cdc;
-obstacleR=1.0;%衝突判定用の障害物の半径
+obstacleR=0.5;%衝突判定用の障害物の半径
 global dt; 
 global po_i;
 dt=0.1;%刻み時間[s]
@@ -463,7 +463,7 @@ obs=ob.';
 po_cdc(po_i)=potential(up_obs,s_x,rand_size);
 sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
-save('potential_cdc_11_v1.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
+save('potential_cdc_10_v1.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
 if i>1
     delete(d_q);
     delete(d_g);
@@ -477,13 +477,19 @@ end
 
 
 %ゴール判定
-if norm(x(1:2)-goal')<1.0
+if norm(x(1:2)-goal')<3.0
     disp('Arrive Goal!!');
     s=[x(1);x(2)];
     delete(b);
     break;
 end
 
+if  i > 50 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-50,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-50,2)) < 1.0 
+    disp('Skip Waypoint');
+    s=[x(1);x(2)];
+    delete(b);
+    break;
+end
 if i>1    
     delete(d_x);   
 end

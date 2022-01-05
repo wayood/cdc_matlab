@@ -399,13 +399,19 @@ for j=1:length(up_obs(1,:))
 end
 
 %ゴール判定
-if norm(x(1:2)-goal')<1.0
+if norm(x(1:2)-goal')<3.0
     disp('Arrive Goal!!');
     s=[x(1);x(2)];
     delete(b);
     break;
 end
 
+if  i > 50 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-50,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-50,2)) < 1.0 
+    disp('Skip Waypoint');
+    s=[x(1);x(2)];
+    delete(b);
+    break;
+end
 if i>1    
     delete(d_x);   
 end
