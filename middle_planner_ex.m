@@ -115,7 +115,9 @@ end
 
 %誤差をロボット進行方向に考えて表示
 function [up_obs]=gosa_move(obs,start,ang_wp,v)
- [slip_x,slip_y]=sliprate(ang_wp,v);
+ sliprate(ang_wp,v);
+ global glo_slip_x;
+ global glo_slip_y;
  for i=1:length(obs(1,:))
     r(i)=len(obs(:,i).',start.');
     if r(i)<1
@@ -125,8 +127,8 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
     error=l(i);
     error_x=cos(ang_wp)*error;
     error_y=sin(ang_wp)*error;
-    up_obs(1,i)=error_x+obs(1,i)+slip_x;
-    up_obs(2,i)=error_y+obs(2,i)+slip_y;
+    up_obs(1,i)=error_x+obs(1,i)+glo_slip_x;
+    up_obs(2,i)=error_y+obs(2,i)+glo_slip_y;
  end
 end
 
@@ -144,19 +146,17 @@ function [up_obs]=gosa_hozon(obs)
  up_obs(3,:)=1;
 end
 %% スリップ率導入
-function [x,y]=sliprate(ang,v)
+function sliprate(ang,v)
  global dt; 
- global slip;
  global glo_slip_x;
  global glo_slip_y;
  s=randi(30)/100;
  v_real=(1-s)*v;
  slip_length=(v_real-v)*dt;
- slip=slip+slip_length;
- x=slip*cos(ang);
- y=slip*sin(ang);
- glo_slip_x = glo_slip_x + x;
- glo_slip_y = glo_slip_y + y;
+ x=slip_length*cos(ang);
+ y=slip_length*sin(ang);
+ glo_slip_x =  glo_slip_x + x;
+ glo_slip_y =  glo_slip_y + y;
 end
 
 %% 逐次的なアニメーション
