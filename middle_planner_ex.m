@@ -406,6 +406,10 @@ if norm(x(1:2)-goal')<3.0
     break;
 end
 
+if  i > 30 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-30,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-30,2)) < 1.0 
+    evalParam(2)=1.0;
+end
+
 if  i > 50 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-50,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-50,2)) < 1.0 
     disp('Skip Waypoint');
     s=[x(1);x(2)];

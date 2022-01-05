@@ -452,9 +452,7 @@ drive_cdc=[drive_cdc s_x];
 if i==1
     [me_gosa_obs]=gosa_hozon(glo_gosa_obs);
 end
-disp(me_gosa_obs);
 [ang_wp,sen_num,cur_obs]=sensor_range(me_gosa_obs,start.',goal.');
-disp(cur_obs);
 [up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(up_obs,rand_size);
@@ -482,6 +480,10 @@ if norm(x(1:2)-goal')<3.0
     s=[x(1);x(2)];
     delete(b);
     break;
+end
+
+if  i > 30 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-30,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-30,2)) < 1.0 
+    evalParam(2)=1.0;
 end
 
 if  i > 50 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-50,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-50,2)) < 1.0 
