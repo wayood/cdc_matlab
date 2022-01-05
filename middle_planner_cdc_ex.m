@@ -6,11 +6,15 @@ global glo_rand_size;
 global drive_cdc;
 global dt;
 global slip;
+global glo_slip_x;
+global glo_slip_y;
 global po_i;
 po_i=1;
 slip=0;
+glo_slip_x = 0;
+glo_slip_y = 0;
 dt=0;
-load("path_interp_6.mat");
+load("path_interp_11.mat");
 path=drive_cdc;
 drive_cdc=[];
 p.start=[0;0];
@@ -55,7 +59,7 @@ end
    
 wp = [con_wp_x;con_wp_y];
 %}
-save("wp.mat","wp");
+save("wp_11_v1.mat","wp");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -159,14 +163,15 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
 end
 
 %蓄積誤差を保存
-function [up_obs]=gosa_hozon(obs,ang_wp,v)
- [slip_x,slip_y]=sliprate(ang_wp,v);
+function [up_obs]=gosa_hozon(obs)
+ global glo_slip_x;
+ global glo_slip_y;
  if obs(3,:) == 1
      obs(3,:)=[];
  end
  for i=1:length(obs(1,:))
-    up_obs(1,i)=obs(1,i)+slip_x;
-    up_obs(2,i)=obs(2,i)+slip_y;
+    up_obs(1,i)=obs(1,i)+glo_slip_x;
+    up_obs(2,i)=obs(2,i)+glo_slip_y;
  end
  up_obs(3,:)=1;
 end
@@ -174,12 +179,16 @@ end
 function [x,y]=sliprate(ang,v)
  global dt; 
  global slip;
+ global glo_slip_x;
+ global glo_slip_y;
  s=randi(30)/100;
  v_real=(1-s)*v;
  slip_length=(v_real-v)*dt;
  slip=slip+slip_length;
  x=slip*cos(ang);
  y=slip*sin(ang);
+ glo_slip_x = glo_slip_x + x;
+ glo_slip_y = glo_slip_y + y;
 end
 
 %% 逐次的なアニメーション
@@ -406,7 +415,7 @@ global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
 global drive_cdc;
-obstacleR=0.2;%衝突判定用の障害物の半径
+obstacleR=1.0;%衝突判定用の障害物の半径
 global dt; 
 global po_i;
 dt=0.1;%刻み時間[s]
@@ -430,7 +439,6 @@ if i==1
     [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR,path);
 else
     [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obs,obstacleR,path);
-    delete(kill_line);
 end
 
 x=f(x,u);%運動モデルによる移動
@@ -442,9 +450,7 @@ s_x=[x(1);x(2)];
 drive_cdc=[drive_cdc s_x];
 
 if i==1
-    me_gosa_obs=glo_gosa_obs;
-else
-   [me_gosa_obs]=gosa_hozon(glo_gosa_obs,x(3),u(1,1));
+    [me_gosa_obs]=gosa_hozon(glo_gosa_obs);
 end
 
 [ang_wp,sen_num,cur_obs]=sensor_range(me_gosa_obs,start.',goal.');
@@ -452,11 +458,11 @@ end
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(up_obs,rand_size);
 obs=ob.';
-kill_line=cdc_obs_line(gosa_obs,up_obs);
+%kill_line=cdc_obs_line(gosa_obs,up_obs);
 po_cdc(po_i)=potential(up_obs,s_x,rand_size);
 sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
-save('potential_cdc.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
+save('potential_cdc_11_v1.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
 if i>1
     delete(d_q);
     delete(d_g);
@@ -472,7 +478,6 @@ end
 %ゴール判定
 if norm(x(1:2)-goal')<1.0
     disp('Arrive Goal!!');
-    delete(kill_line);
     s=[x(1);x(2)];
     delete(b);
     break;

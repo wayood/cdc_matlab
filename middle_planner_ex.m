@@ -7,9 +7,13 @@ global glo_gosa_obs;
 global glo_rand_size;
 global dt;
 global slip;
+global glo_slip_x;
+global glo_slip_y;
 slip=0;
+glo_slip_x=0;
+glo_slip_y=0;
 dt=0;
-load("path_interp_6.mat");
+load("path_interp_11.mat");
 global drive;
 global po_i;
 po_i=1;
@@ -48,17 +52,19 @@ end
 
 wp=[wp p.goal];
 %}
-load("wp.mat");
+load("wp_11_v1.mat");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
 end
 
 point=twopoint(wp(:,1),p.start);
+kill_point=zeros(100,5000);
 for i=1:length(wp(1,:))-1
-  kill_ex=twopoint(wp(:,i+1),wp(:,i));
-  kill_point(i,:)=kill_ex;
+  kill_point(:,i)=twopoint(wp(:,i+1),wp(:,i));
 end
+kill_point(length(wp(:,1)),:)=[];
+
 pause();
 
 global wp_init;
@@ -74,7 +80,7 @@ obs=ob_round(glo_gosa_obs,glo_rand_size);
 
 %ナビゲーション
 while 1
-   p.start=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.');
+   [p.start,obs]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.');
    l=len(wp(:,i).',p.start.');
    i=i+1;
    %[b,w]=animation(up_obs,wp,p,i,rand_size);
@@ -125,14 +131,15 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
 end
 
 %蓄積誤差を保存
-function [up_obs]=gosa_hozon(obs,ang_wp,v)
- [slip_x,slip_y]=sliprate(ang_wp,v);
+function [up_obs]=gosa_hozon(obs)
+ global glo_slip_x;
+ global glo_slip_y;
  if obs(3,:) == 1
      obs(3,:)=[];
  end
  for i=1:length(obs(1,:))
-    up_obs(1,i)=obs(1,i)+slip_x;
-    up_obs(2,i)=obs(2,i)+slip_y;
+    up_obs(1,i)=obs(1,i)+glo_slip_x;
+    up_obs(2,i)=obs(2,i)+glo_slip_y;
  end
  up_obs(3,:)=1;
 end
@@ -140,12 +147,16 @@ end
 function [x,y]=sliprate(ang,v)
  global dt; 
  global slip;
+ global glo_slip_x;
+ global glo_slip_y;
  s=randi(30)/100;
  v_real=(1-s)*v;
  slip_length=(v_real-v)*dt;
  slip=slip+slip_length;
  x=slip*cos(ang);
  y=slip*sin(ang);
+ glo_slip_x = glo_slip_x + x;
+ glo_slip_y = glo_slip_y + y;
 end
 
 %% 逐次的なアニメーション
@@ -327,12 +338,12 @@ end
 end
 
 %% local plan
-function [s,up_obs,gosa_obs] = DynamicWindowApproachSample_k(start,goal,obstacle,path)
+function [s,ob] = DynamicWindowApproachSample_k(start,goal,obstacle,path)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 
       
-obstacleR=0.2;%衝突判定用の障害物の半径
+obstacleR=1.0;%衝突判定用の障害物の半径
 global dt; dt=0.1;%刻み時間[s]
 global glo_gosa_obs;
 global glo_rand_size;
@@ -365,9 +376,7 @@ start=[x(1),x(2)];
 s_x=[x(1);x(2)];
 drive=[drive s_x];
 if i==1
-    me_gosa_obs=glo_gosa_obs;
-else
-    [me_gosa_obs]=gosa_hozon(glo_gosa_obs,x(3),u(1,1));
+    [me_gosa_obs]=gosa_hozon(glo_gosa_obs);
 end
 [ang_wp,sen_num,cur_obs]=sensor_range(me_gosa_obs,start.',goal.');
 [up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
@@ -377,7 +386,7 @@ obs=ob.';
 po(po_i)=potential(up_obs,start.',rand_size);
 sum_po=sum(po)/po_i;
 po_i=po_i+1;
-save('potential.mat','drive','po','sum_po');
+save('potential_11_v1.mat','drive','po','sum_po');
 if i>1
     delete(d_q);
     delete(d_g);
