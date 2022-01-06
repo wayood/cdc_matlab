@@ -14,7 +14,7 @@ slip=0;
 glo_slip_x = 0;
 glo_slip_y = 0;
 dt=0;
-load("path_interp_10.mat");
+load("path_interp_9.mat");
 path=drive_cdc;
 drive_cdc=[];
 p.start=[0;0];
@@ -59,7 +59,7 @@ end
    
 wp = [con_wp_x;con_wp_y];
 %}
-save("wp_10_v1.mat","wp");
+save("wp_9_v1.mat","wp");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -461,7 +461,7 @@ obs=ob.';
 po_cdc(po_i)=potential(up_obs,s_x,rand_size);
 sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
-save('potential_cdc_10_v1.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
+save('potential_cdc_9_v1.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
 if i>1
     delete(d_q);
     delete(d_g);
@@ -483,7 +483,7 @@ if norm(x(1:2)-goal')<3.0
 end
 
 if  i > 30 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-30,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-30,2)) < 1.0 
-    evalParam(2)=1.0;
+    obstacleR=0.1;
 end
 
 if  i > 40 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-40,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-40,2)) < 1.0 
@@ -492,7 +492,7 @@ if  i > 40 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:
     evalParam(5)=0.3;
 end
 
-if  i > 50 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-50,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-50,2)) < 1.0 
+if  i > 100 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-100,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-100,2)) < 1.0 
     disp('Skip Waypoint');
     s=[x(1);x(2)];
     delete(b);

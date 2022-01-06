@@ -13,7 +13,7 @@ slip=0;
 glo_slip_x=0;
 glo_slip_y=0;
 dt=0;
-load("path_interp_10.mat");
+load("path_interp_9.mat");
 global drive;
 global po_i;
 po_i=1;
@@ -52,7 +52,7 @@ end
 
 wp=[wp p.goal];
 %}
-load("wp_10_v1.mat");
+load("wp_9_v1.mat");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -343,7 +343,7 @@ function [s,ob] = DynamicWindowApproachSample_k(start,goal,obstacle,path)
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 
       
-obstacleR=1.0;%衝突判定用の障害物の半径
+obstacleR=0.5;%衝突判定用の障害物の半径
 global dt; dt=0.1;%刻み時間[s]
 global glo_gosa_obs;
 global glo_rand_size;
@@ -386,7 +386,7 @@ obs=ob.';
 po(po_i)=potential(up_obs,start.',rand_size);
 sum_po=sum(po)/po_i;
 po_i=po_i+1;
-save('potential_10_v1.mat','drive','po','sum_po');
+save('potential_9_v1.mat','drive','po','sum_po');
 if i>1
     delete(d_q);
     delete(d_g);
@@ -407,16 +407,16 @@ if norm(x(1:2)-goal')<3.0
 end
 
 if  i > 30 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-30,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-30,2)) < 1.0 
-    evalParam(2)=1.0;
+    obstacleR=0.1;
 end
 
-if  i > 40 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-40,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-40,2)) < 1.0 
+if  i > 40 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-40,1)) < 0.6 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-40,2)) < 0.6 
     evalParam(1)=2.0;    
     evalParam(2)=0.2;
     evalParam(5)=0.3;
 end
 
-if  i > 50 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-50,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-50,2)) < 1.0 
+if  i > 100 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-100,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-100,2)) < 1.0 
     disp('Skip Waypoint');
     s=[x(1);x(2)];
     delete(b);
