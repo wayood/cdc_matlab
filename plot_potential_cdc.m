@@ -1,5 +1,5 @@
-load('potential_11.mat');%軌道補正なし
-load('potential_cdc_11.mat');%軌道補正込み
+load('potential_8_v1.mat');%軌道補正なし
+load('potential_cdc_8_v1.mat');%軌道補正込み
 x=100;
 y=100;
 Potential_Field(glo_obs,glo_rand_size,x,y);
@@ -12,12 +12,14 @@ for i=1:length(drive(1,:))
     plot3(drive(1,i)+51,drive(2,i),z(i),'o','Color','b');
     hold on;
 end
+s1=sum(z)/i;
 
 for j=1:length(drive_cdc(1,:))
     z_cdc(j)=potential(glo_obs,drive_cdc(:,j),glo_rand_size);
     plot3(drive_cdc(1,j)+51,drive_cdc(2,j),z_cdc(j),'o','Color','r');
     hold on;
 end
+s2=sum(z_cdc)/j;
 pause();
 
 %% 補正によるSafeRateを表現
@@ -74,7 +76,7 @@ hold on;
 grid on;
 xlabel('x[m]');
 ylabel('potential');
-
+save("potential_evaluation","sr","sr_cdc","s1","s2");
 
 
 function po=potential(obs,move,size)
