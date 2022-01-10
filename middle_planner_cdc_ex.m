@@ -14,7 +14,7 @@ slip=0;
 glo_slip_x = 0;
 glo_slip_y = 0;
 dt=0;
-load("path_interp_9.mat");
+load("path_interp_8.mat");
 path=drive_cdc;
 drive_cdc=[];
 p.start=[0;0];
@@ -59,7 +59,7 @@ end
    
 wp = [con_wp_x;con_wp_y];
 %}
-save("wp_9_v1.mat","wp");
+save("wp_8_v2.mat","wp");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -108,15 +108,19 @@ while 1
        disp("Finish");
        break;
    end
-   [wp,k,mat_er,plan_er]=correction(up_obs,gosa_obs,p,i);
+   [wp,k,mat_er,plan_er]=correction(up_obs,gosa_obs,p,i-1);
    k_A(count)=k;
    Matrix_error(count)=mat_er;
    Plan_error(count)=plan_er;
    count=count+1;
-   for j=i:length(wp(1,:))-1
+   c_path=[];
+   path=[];
+   for j=i-1:length(wp(1,:))-1
        kill_p_ex=twopoint(wp(:,j+1),wp(:,j));
+       c_path=path_correct(wp(:,j+1),wp(:,j));
+       path=[path c_path];
        w(j)=plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
-       kill_p(j-i+1,:)=kill_p_ex;
+       kill_p(j-i+2,:)=kill_p_ex;
    end
    pause(0.001);
 end
@@ -365,6 +369,26 @@ function t=twopoint(af_start,bef_start)
   end 
   
 end
+
+%% 軌道の保存
+function t=path_correct(af_start,bef_start)
+
+  a=(bef_start(2,1)-af_start(2,1))/(bef_start(1,1)-af_start(1,1));
+  b=bef_start(2,1)-a*bef_start(1,1);
+  x=linspace(bef_start(1,1),af_start(1,1));
+  y=linspace(bef_start(2,1),af_start(2,1));
+  
+  if bef_start(1,1)-af_start(1,1)==0
+   b=bef_start(1,1);
+   t=[b;y];
+  elseif bef_start(2,1)-af_start(2,1)==0
+   t=[x;b];
+  else
+   t=[(y-b)/a;y];
+  end 
+  
+end
+
 %% アニメーション　円の作成
 %下三つは円の塗りつぶし
 function en_plot_blue(glo_obs,size)
@@ -461,7 +485,7 @@ obs=ob.';
 po_cdc(po_i)=potential(up_obs,s_x,rand_size);
 sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
-save('potential_cdc_9_v1.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
+save('potential_cdc_8_v2.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
 if i>1
     delete(d_q);
     delete(d_g);
