@@ -229,14 +229,14 @@ function [awp,k,mat_er,plan_er]=correction(lm_current,lm_first,p,i)
     end
     A_n=A;
    for j=i:length(wp_init(1,:))
-       wp(1,j)=wp_init(1,j)-p.start(1,1);
-       wp(2,j)=wp_init(2,j)-p.start(2,1);
+       wp(1,j)=wp_init(1,j);
+       wp(2,j)=wp_init(2,j);
    end
    for i=1:length(wp(1,:))
       awp(:,i)=A()*wp(:,i);
    end
-   awp(1,:)=awp(1,:)+p.start(1,1);
-   awp(2,:)=awp(2,:)+p.start(2,1);
+   awp(1,:)=awp(1,:);
+   awp(2,:)=awp(2,:);
    awp(3,:)=[];
    k=cond(A,2);
 end
@@ -485,7 +485,7 @@ obs=ob.';
 po_cdc(po_i)=potential(up_obs,s_x,rand_size);
 sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
-save('potential_cdc_8_v2.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc','path');
+save('potential_cdc_8_v2.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
 if i>1
     delete(d_q);
     delete(d_g);

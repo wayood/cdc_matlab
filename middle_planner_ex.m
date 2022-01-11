@@ -13,7 +13,7 @@ slip=0;
 glo_slip_x=0;
 glo_slip_y=0;
 dt=0;
-load("path_interp_9.mat");
+load("path_interp_8.mat");
 global drive;
 global po_i;
 po_i=1;
@@ -52,7 +52,7 @@ end
 
 wp=[wp p.goal];
 %}
-load("wp_9_v1.mat");
+load("wp_8_v1.mat");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -386,7 +386,7 @@ obs=ob.';
 po(po_i)=potential(up_obs,start.',rand_size);
 sum_po=sum(po)/po_i;
 po_i=po_i+1;
-save('potential_9_v1.mat','drive','po','sum_po');
+save('potential_8_v1.mat','drive','po','sum_po','path');
 if i>1
     delete(d_q);
     delete(d_g);
