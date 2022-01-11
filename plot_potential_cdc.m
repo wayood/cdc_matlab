@@ -1,5 +1,5 @@
-load('potential_8_v1.mat');%軌道補正なし
-load('potential_cdc_8_v1.mat');%軌道補正込み
+load('potential_9_v1.mat');%軌道補正なし
+load('potential_cdc_9_v1.mat');%軌道補正込み
 x=100;
 y=100;
 Potential_Field(glo_obs,glo_rand_size,x,y);
@@ -30,36 +30,58 @@ for i=1:length(path(:,1))
     z(i)=potential(glo_gosa_obs,path(i,:).',glo_rand_size);
 end
 
-g=DP(z,po_cdc);
-
+hold off;
+i=1:length(z(1,:));
+plot(i,z(i),'b');
+hold on;
+i=1:length(po_cdc(1,:));
+plot(i,po_cdc(i),'r');
+hold on;
+grid on;
+pause();
+[z,po_cdc]=differential(z,po_cdc);
+z=fft(z);
+po_cdc=fft(po_cdc);
+hold off;
+i=1:length(z(1,:));
+plot(i,z(i),'b');
+hold on;
+i=1:length(po_cdc(1,:));
+plot(i,po_cdc(i),'r');
+hold on;
+grid on;
+pause();
+[cost,from]=DP_prepare(z,po_cdc);
+[tmp_x,tmp_y]=DP_matching(cost,from);
+[z,po_cdc]=GradientSR(z,po_cdc,tmp_x,tmp_y);
+pause();
+hold off;
+i=1:length(z(1,:));
+plot(i,z(i),'b');
+hold on;
+i=1:length(po_cdc(1,:));
+plot(i,po_cdc(i),'r');
+hold on;
+grid on;
 p_init=sum(z)/i;
 
 %補正後のLocal軌道を
-if length(po_cdc) <= length(z)
-    num=length(po_cdc);
-else
-    num=length(z);
-end
 
 for i=1:length(z)
  sr_st_initial(i)=(z(i)-p_init).^2;
-end
-
-for i=1:num
  sr_st_cdc(i)=(po_cdc(i)-sum_po_cdc).^2;
  sr_st_cdc_con(i)=(z(i)-p_init)*(po_cdc(i)-sum_po_cdc);
 end
 
-if length(po) <= length(z)
-    num=length(po);
-else
-    num=length(z);
-end
+[cost,from]=DP_prepare(z,po);
+[tmp_x,tmp_y]=DP_matching(cost,from);
+[z,po]=GradientSR(z,po,tmp_x,tmp_y);
 
-for i=1:num
+for i=1:length(z)
  sr_st_nocdc(i)=(po(i)-sum_po).^2;
  sr_st_nocdc_con(i)=(z(i)-p_init)*(po(i)-sum_po);
 end
+
 sr_cdc=sum(sr_st_cdc_con)/sqrt(sum(sr_st_initial))/sqrt(sum(sr_st_cdc));
 sr=sum(sr_st_nocdc_con)/sqrt(sum(sr_st_initial))/sqrt(sum(sr_st_nocdc));
 SR=[sr_cdc,sr];
@@ -82,7 +104,7 @@ xlabel('x[m]');
 ylabel('potential');
 save("potential_evaluation","sr","sr_cdc","s1","s2");
 
-
+%% 関数系
 function po=potential(obs,move,size)
     po=0;
     for i=1:length(obs(1,:))
@@ -96,37 +118,93 @@ function po=potential(obs,move,size)
     end
 end
 
-function c_p=DP(p_i,p_t)
-io=1;
+function [p_ini,p_cdc]=differential(p_i,p_t)
+    p_ini(1)=p_i(1);
+    for i=2:length(p_i)
+        p_ini(i)=p_i(i)-p_i(i-1);
+    end
+    p_cdc(1)=p_t(1);
+    for i=2:length(p_t)
+        p_cdc(i)=p_t(i)-p_t(i-1);
+    end
+end
+
+%最小コストとマップの作成
+function [cost,from]=DP_prepare(p_i,p_t)
+cost=zeros(length(p_i),length(p_t));
+from=zeros(length(p_i),length(p_t));
 for i=1:length(p_i)
     for j=1:length(p_t)
         d(i,j)=norm(p_i(i)-p_t(j));
         if i==1 && j==1
-            g(i,j)=d(i,j);
+            cost(i,j)=d(i,j);
         end
         if i>1
-            g(i,1)=g(i-1,1)+d(1,j);
+            cost(i,1)=cost(i-1,1)+d(1,j);
+            from(i,1)=1;
         end
         if j>1
-            g(1,j)=g(1,j-1)+d(i,1);
+            cost(1,j)=cost(1,j-1)+d(i,1);
+            from(1,j)=2;
         end
         if i>1 && j>1
-            A=[g(i-1,j)+d(i,j) g(i-1,j-1)+2*d(i,j) g(i,j-1)+d(i,j)];
+            A=[cost(i-1,j)+d(i,j) cost(i-1,j-1)+2*d(i,j) cost(i,j-1)+d(i,j)];
             [M,I]=min(A);
+            cost(i,j)=M;
             if I==1
-                c_p(io,1)=i-1;
-                c_p(io,2)=j;
+                from(i,j)=0;
             elseif I==2
-                c_p(io,1)=i-1;
-                c_p(io,2)=j-1;
-            else
-                c_p(io,1)=i;
-                c_p(io,2)=j-1;
+                from(i,j)=1;
+            else 
+                from(i,j)=2;
             end
-            io=io+1;
         end
     end
-    pause(0.001);
 end
 
 end
+
+%最短経路を探索
+function [tmp_x,tmp_y]=DP_matching(cost,from)
+    i=length(cost(:,1));
+    j=length(cost(1,:));
+    leng=i+j;
+    for k=1:leng
+        if from(i,j)==0
+            i=i-1;
+        elseif from(i,j)==1
+            i=i-1;
+            j=j-1;
+        else
+            j=j-1;
+        end
+        if i<1
+            i=1;
+        end
+        if j<1
+            j=1;
+        end
+        if i==1 && j==1
+            tmp_x(k)=i;
+            tmp_y(k)=j;
+            break;
+        end 
+        tmp_x(k)=i;
+        tmp_y(k)=j;
+    end
+end
+
+%対応するポテンシャル場対して割り振り
+function [z,po_cdc]=GradientSR(p_i,p_t,tmp_i,tmp_t)
+     i=length(tmp_i):-1:1;
+     j=1:length(tmp_i);
+     tmp_i(j)=tmp_i(i);
+     i=length(tmp_i):-1:1;
+     j=1:length(tmp_i);
+     tmp_t(j)=tmp_t(i);
+     for i=1:length(tmp_i)
+         z(i)=p_i(tmp_i(i));
+         po_cdc(i)=p_t(tmp_t(i));
+     end
+end
+
