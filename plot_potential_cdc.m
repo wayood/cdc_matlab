@@ -20,6 +20,7 @@ for j=1:length(drive_cdc(1,:))
     hold on;
 end
 s2=sum(z_cdc)/j;
+
 pause();
 
 %% 補正によるSafeRateを表現
@@ -28,6 +29,9 @@ glo_gosa_obs(3,:)=[];
 for i=1:length(path(:,1))
     z(i)=potential(glo_gosa_obs,path(i,:).',glo_rand_size);
 end
+
+g=DP(z,po_cdc);
+
 p_init=sum(z)/i;
 
 %補正後のLocal軌道を
@@ -90,4 +94,39 @@ function po=potential(obs,move,size)
      end
        po=po+p;
     end
+end
+
+function c_p=DP(p_i,p_t)
+io=1;
+for i=1:length(p_i)
+    for j=1:length(p_t)
+        d(i,j)=norm(p_i(i)-p_t(j));
+        if i==1 && j==1
+            g(i,j)=d(i,j);
+        end
+        if i>1
+            g(i,1)=g(i-1,1)+d(1,j);
+        end
+        if j>1
+            g(1,j)=g(1,j-1)+d(i,1);
+        end
+        if i>1 && j>1
+            A=[g(i-1,j)+d(i,j) g(i-1,j-1)+2*d(i,j) g(i,j-1)+d(i,j)];
+            [M,I]=min(A);
+            if I==1
+                c_p(io,1)=i-1;
+                c_p(io,2)=j;
+            elseif I==2
+                c_p(io,1)=i-1;
+                c_p(io,2)=j-1;
+            else
+                c_p(io,1)=i;
+                c_p(io,2)=j-1;
+            end
+            io=io+1;
+        end
+    end
+    pause(0.001);
+end
+
 end
