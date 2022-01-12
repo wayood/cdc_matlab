@@ -30,25 +30,28 @@ for i=1:length(path(:,1))
     z(i)=potential(glo_gosa_obs,path(i,:).',glo_rand_size);
 end
 
+
+[z,po_cdc]=differential(z,po_cdc);
 hold off;
 i=1:length(z(1,:));
 plot(i,z(i),'b');
 hold on;
 i=1:length(po_cdc(1,:));
 plot(i,po_cdc(i),'r');
+ylim([-0.02 0.02]);
+xlim([0 length(z)]);
 hold on;
 grid on;
 pause();
-[z,po_cdc]=differential(z,po_cdc);
-z=fft(z);
-po_cdc=fft(po_cdc);
-hold off;
+[z,po_cdc]=FFT(z,po_cdc);
 i=1:length(z(1,:));
-plot(i,z(i),'b');
+plot(i,z(i),'r');
 hold on;
 i=1:length(po_cdc(1,:));
-plot(i,po_cdc(i),'r');
+plot(i,po_cdc(i),'b');
 hold on;
+ylim([-0.02 0.02]);
+xlim([0 length(z)]);
 grid on;
 pause();
 [cost,from]=DP_prepare(z,po_cdc);
@@ -105,6 +108,8 @@ ylabel('potential');
 save("potential_evaluation","sr","sr_cdc","s1","s2");
 
 %% 関数系
+
+%ポテンシャル場の生成
 function po=potential(obs,move,size)
     po=0;
     for i=1:length(obs(1,:))
@@ -118,14 +123,32 @@ function po=potential(obs,move,size)
     end
 end
 
+function [z,po_cdc]=FFT(z,po_cdc)
+     cutoff=1;
+     z=fft(z);
+     po_cdc=fft(po_cdc);
+     for i=1:length(z)
+         if z(i)>cutoff
+             z(i)=0;
+         end
+     end
+     for i=1:length(po_cdc)
+         if po_cdc(i)>cutoff
+             po_cdc(i)=0;
+         end
+     end
+     z=ifft(z);
+     po_cdc=ifft(po_cdc);
+end
+%微分値を出力
 function [p_ini,p_cdc]=differential(p_i,p_t)
-    p_ini(1)=p_i(1);
-    for i=2:length(p_i)
-        p_ini(i)=p_i(i)-p_i(i-1);
+    
+    for i=1:length(p_i)-1
+        p_ini(i)=p_i(i+1)-p_i(i);
     end
-    p_cdc(1)=p_t(1);
-    for i=2:length(p_t)
-        p_cdc(i)=p_t(i)-p_t(i-1);
+
+    for i=1:length(p_t)-1
+        p_cdc(i)=p_t(i+1)-p_t(i);
     end
 end
 
