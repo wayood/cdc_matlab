@@ -30,63 +30,42 @@ for i=1:length(path(:,1))
     z(i)=potential(glo_gosa_obs,path(i,:).',glo_rand_size);
 end
 
+%微分値とFFTによる前処理でポテンシャル遷移を導出
+z=differential(z);
+po_cdc=differential(po_cdc);
+po=differential(po);
+z=FFT(z);
+po=FFT(po);
+po_cdc=FFT(po_cdc);
 
-[z,po_cdc]=differential(z,po_cdc);
-hold off;
-i=1:length(z(1,:));
-plot(i,z(i),'b');
-hold on;
-i=1:length(po_cdc(1,:));
-plot(i,po_cdc(i),'r');
-ylim([-0.02 0.02]);
-xlim([0 length(z)]);
-hold on;
-grid on;
-pause();
-[z,po_cdc]=FFT(z,po_cdc);
-i=1:length(z(1,:));
-plot(i,z(i),'r');
-hold on;
-i=1:length(po_cdc(1,:));
-plot(i,po_cdc(i),'b');
-hold on;
-ylim([-0.02 0.02]);
-xlim([0 length(z)]);
-grid on;
-pause();
+
+%動的計画法による非線形マッチングの利用（軌道補正あり）
 [cost,from]=DP_prepare(z,po_cdc);
 [tmp_x,tmp_y]=DP_matching(cost,from);
 [z,po_cdc]=GradientSR(z,po_cdc,tmp_x,tmp_y);
-pause();
-hold off;
-i=1:length(z(1,:));
-plot(i,z(i),'b');
-hold on;
-i=1:length(po_cdc(1,:));
-plot(i,po_cdc(i),'r');
-hold on;
-grid on;
-p_init=sum(z)/i;
+p_init=sum(z)/length(z);
 
-%補正後のLocal軌道を
-
+%補正後のLocal軌道
 for i=1:length(z)
- sr_st_initial(i)=(z(i)-p_init).^2;
+ sr_st_initial_cdc(i)=(z(i)-p_init).^2;
  sr_st_cdc(i)=(po_cdc(i)-sum_po_cdc).^2;
  sr_st_cdc_con(i)=(z(i)-p_init)*(po_cdc(i)-sum_po_cdc);
 end
 
+%動的計画法による非線形マッチングの利用（軌道補正なし）
 [cost,from]=DP_prepare(z,po);
 [tmp_x,tmp_y]=DP_matching(cost,from);
 [z,po]=GradientSR(z,po,tmp_x,tmp_y);
+p_init=sum(z)/length(z);
 
 for i=1:length(z)
+ sr_st_initial_nocdc(i)=(z(i)-p_init).^2;
  sr_st_nocdc(i)=(po(i)-sum_po).^2;
  sr_st_nocdc_con(i)=(z(i)-p_init)*(po(i)-sum_po);
 end
 
-sr_cdc=sum(sr_st_cdc_con)/sqrt(sum(sr_st_initial))/sqrt(sum(sr_st_cdc));
-sr=sum(sr_st_nocdc_con)/sqrt(sum(sr_st_initial))/sqrt(sum(sr_st_nocdc));
+sr_cdc=sum(sr_st_cdc_con)/sqrt(sum(sr_st_initial_cdc))/sqrt(sum(sr_st_cdc));
+sr=sum(sr_st_nocdc_con)/sqrt(sum(sr_st_initial_nocdc))/sqrt(sum(sr_st_nocdc));
 SR=[sr_cdc,sr];
 T=array2table(SR,'VariableNames',{'SR_cdc','SR'});
 fig = uifigure;
@@ -123,32 +102,34 @@ function po=potential(obs,move,size)
     end
 end
 
-function [z,po_cdc]=FFT(z,po_cdc)
-     cutoff=1;
-     z=fft(z);
-     po_cdc=fft(po_cdc);
-     for i=1:length(z)
-         if z(i)>cutoff
-             z(i)=0;
+function p_i=FFT(p_i)
+     dt=0.01;%サンプル周期
+     
+     %サンプル数はとってきた配列数から2^nに近い値に設定し、リサンプリング
+     n_i=fix(log2(length(p_i)));
+     N_i=2.^n_i;
+     p_i_sam=resample(p_i,N_i,length(p_i));
+     fq_i=linspace(0,1.0/dt,N_i);
+     
+     
+     %FFT開始
+     p_i_fft=fft(p_i_sam);
+    
+     %高周波成分カット
+     cutoff=fq_i(length(fq_i))*0.02;
+     for i=1:length(fq_i)
+         if fq_i(i)>cutoff
+             p_i_fft(i)=0;
          end
      end
-     for i=1:length(po_cdc)
-         if po_cdc(i)>cutoff
-             po_cdc(i)=0;
-         end
-     end
-     z=ifft(z);
-     po_cdc=ifft(po_cdc);
+     %IFFTで元の信号に戻す
+     p_i_ifft=real(ifft(p_i_fft))*2;
+     p_i=resample(p_i_ifft,length(p_i),N_i);
 end
 %微分値を出力
-function [p_ini,p_cdc]=differential(p_i,p_t)
-    
+function p_ini=differential(p_i)  
     for i=1:length(p_i)-1
         p_ini(i)=p_i(i+1)-p_i(i);
-    end
-
-    for i=1:length(p_t)-1
-        p_cdc(i)=p_t(i+1)-p_t(i);
     end
 end
 
