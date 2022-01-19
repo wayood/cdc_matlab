@@ -186,7 +186,7 @@ function sliprate(ang,v)
  global dt; 
  global glo_slip_x;
  global glo_slip_y;
- s=randi(60)/100;
+ s=rand*50/100;
  v_real=(1-s)*v;
  slip_length=(v_real-v)*dt;
  x=slip_length*cos(ang);

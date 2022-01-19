@@ -72,7 +72,69 @@ function graph(glo_gosa_obs,p,size)
     ylim([0 100]);
 end
 
+%% ポテンシャル場で評価
+function po=potential(obs,move,size)
+    po=0;
+    
+    for i=1:length(obs(1,:))
+     l=len(obs(:,i).',move.');
+     if l < size(i)
+       p=(3-l.^2/size(i).^2)/2;
+     else
+       p=size(i)/l;
+     end
+     po=po+p;
+    end
+end
 
+%% 経路生成時のLM座標の視野角判定
+function [rand_size,cur_gosa_obs]=sensor_judge(gosa_obs,sen_num,glo_rand_size)
+   for i=1:length(gosa_obs(1,:))
+      if sen_num(i)==1
+          gosa_obs(:,i)=[-1;-1;-1];
+          glo_rand_size(i)=0;
+      end
+   end
+    idx = gosa_obs(1,:)==-1 & gosa_obs(2,:) == -1 & gosa_obs(3,:) == -1;
+    idy = glo_rand_size(1,:)==0;
+    rand_size=glo_rand_size(~idy);
+    cur_gosa_obs=gosa_obs(:,~idx);
+end
+
+%% 視野角を考慮
+function [ang_wp,sen_num,sen_obs]=sensor_range(obs,start,wp)
+   %視野の射程距離
+   range_base=50;
+   if obs(3,:)==1
+       obs(3,:)=[];
+   end
+   for i=1:length(obs(1,:))
+     [ang_wp,range_wpbase_max,range_wpbase_min,range_s,range_ln]=siya(obs(:,i),start,wp);
+     if start(2,1)>obs(2,i) 
+        obs(:,i)=[-1;-1];
+        sen_num(i)=1;%視野に入るかの判定
+      elseif range_s>range_wpbase_min && range_s<range_wpbase_max && range_ln<range_base
+        sen_num(i)=0;
+      else
+        obs(:,i)=[-1;-1];
+        sen_num(i)=1;
+      end
+   end
+      idx = obs(1,:)== -1 & obs(2,:) == -1;
+      sen_obs = obs(:,~idx);
+end
+
+%% 視野角計算
+function   [ang_wp,range_wpbase_max,range_wpbase_min,range_s,range_l]=siya(obs,start,wp)
+   range_l=sqrt((obs(1,1)-start(1,1))^2+(obs(2,1)-start(2,1))^2);
+   range_x=obs(1,1)-start(1,1);
+   range_l1=sqrt((wp(1,1)-start(1,1))^2+(wp(2,1)-start(2,1))^2);
+   range_x1=wp(1,1)-start(1,1);
+   range_wpbase_min=acos(range_x1/range_l1)-(11*pi/36);
+   range_wpbase_max=acos(range_x1/range_l1)+(11*pi/36);
+   ang_wp=acos(range_x1/range_l1);
+   range_s=acos(range_x/range_l);
+end
 
 %% アニメーション　円の作成
 %下三つは円の塗りつぶし
@@ -119,6 +181,8 @@ obstacleR=0.2;%衝突判定用の障害物の半径
 global dt; 
 dt=0.1;%刻み時間[s]
 
+i_po=1;
+
 %ロボットの力学モデル
 %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
 % 速度解像度[m/s],回頭速度解像度[rad/s]]
@@ -141,7 +205,14 @@ result.x=[result.x; x'];
 start=[x(1),x(2)];
 s_x=[x(1);x(2)];
 drive_cdc=[drive_cdc s_x];
-save('path_interp_5.mat','drive_cdc','glo_obs','glo_gosa_obs','glo_rand_size');
+[~,sen_num,gosa_obs]=sensor_range(glo_gosa_obs,start.',goal.');
+[rand_size,~]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
+po_cruise(i_po)=potential(gosa_obs,s_x,rand_size);
+sum_po_cruise=sum(po_cruise)/i_po;
+i_po=i_po+1;
+save('potential_cruise_1.mat','po_cruise','sum_po_cruise');
+save('path_interp_1_v1.mat','drive_cdc','glo_obs','glo_gosa_obs','glo_rand_size');
+
 if i>1
     delete(d_q);
     delete(d_g);
