@@ -1,8 +1,10 @@
-load('potential_9_v1.mat');%軌道補正なし
-load('potential_cdc_9_v1.mat');%軌道補正込み
+load('potential_8_v1.mat');%軌道補正なし
+load('potential_cdc_8_v1.mat');%軌道補正込み
+load('potential_cruise_8.mat');%指示軌道ポテンシャル場
 x=100;
 y=100;
 Potential_Field(glo_obs,glo_rand_size,x,y);
+
 hold on;
 %% 三次元的にポテンシャル場で評価
 %ここでは真の障害物に対しての安定性を補正ありなしで判別
@@ -24,44 +26,38 @@ s2=sum(z_cdc)/j;
 pause();
 
 %% 補正によるSafeRateを表現
-%SafeRateをGlobalpathでのポテンシャル遷移を計算
-glo_gosa_obs(3,:)=[];
-for i=1:length(path(:,1))
-    z(i)=potential(glo_gosa_obs,path(i,:).',glo_rand_size);
-end
+po_cruise_st=po_cruise;
 
 %微分値とFFTによる前処理でポテンシャル遷移を導出
-z=differential(z);
+po_cruise=differential(po_cruise);
 po_cdc=differential(po_cdc);
 po=differential(po);
-z=FFT(z);
+po_cruise=FFT(po_cruise);
 po=FFT(po);
 po_cdc=FFT(po_cdc);
 
 
 %動的計画法による非線形マッチングの利用（軌道補正あり）
-[cost,from]=DP_prepare(z,po_cdc);
+[cost,from]=DP_prepare(po_cruise,po_cdc);
 [tmp_x,tmp_y]=DP_matching(cost,from);
-[z,po_cdc]=GradientSR(z,po_cdc,tmp_x,tmp_y);
-p_init=sum(z)/length(z);
+[po_cruise,po_cdc]=GradientSR(po_cruise,po_cdc,tmp_x,tmp_y);
 
 %補正後のLocal軌道
-for i=1:length(z)
- sr_st_initial_cdc(i)=(z(i)-p_init).^2;
+for i=1:length(po_cruise)
+ sr_st_initial_cdc(i)=(po_cruise(i)-sum_po_cruise).^2;
  sr_st_cdc(i)=(po_cdc(i)-sum_po_cdc).^2;
- sr_st_cdc_con(i)=(z(i)-p_init)*(po_cdc(i)-sum_po_cdc);
+ sr_st_cdc_con(i)=(po_cruise(i)-sum_po_cruise)*(po_cdc(i)-sum_po_cdc);
 end
 
 %動的計画法による非線形マッチングの利用（軌道補正なし）
-[cost,from]=DP_prepare(z,po);
+[cost,from]=DP_prepare(po_cruise_st,po);
 [tmp_x,tmp_y]=DP_matching(cost,from);
-[z,po]=GradientSR(z,po,tmp_x,tmp_y);
-p_init=sum(z)/length(z);
+[po_cruise,po]=GradientSR(po_cruise_st,po,tmp_x,tmp_y);
 
-for i=1:length(z)
- sr_st_initial_nocdc(i)=(z(i)-p_init).^2;
+for i=1:length(po_cruise)
+ sr_st_initial_nocdc(i)=(po_cruise(i)-sum_po_cruise).^2;
  sr_st_nocdc(i)=(po(i)-sum_po).^2;
- sr_st_nocdc_con(i)=(z(i)-p_init)*(po(i)-sum_po);
+ sr_st_nocdc_con(i)=(po_cruise(i)-sum_po_cruise)*(po(i)-sum_po);
 end
 
 sr_cdc=sum(sr_st_cdc_con)/sqrt(sum(sr_st_initial_cdc))/sqrt(sum(sr_st_cdc));
