@@ -8,13 +8,13 @@ global dt;
 global slip;
 global glo_slip_x;
 global glo_slip_y;
-global po_i;
-po_i=1;
+global po_cdc;
+po_cdc=[];
 slip=0;
 glo_slip_x = 0;
 glo_slip_y = 0;
 dt=0;
-load("path_interp_8.mat");
+load("path_interp_8_v1.mat");
 path=drive_cdc;
 drive_cdc=[];
 p.start=[0;0];
@@ -59,7 +59,7 @@ end
    
 wp = [con_wp_x;con_wp_y];
 %}
-save("wp_8_v2.mat","wp");
+save("wp_8_v1.mat","wp");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -85,10 +85,11 @@ p_i=1;
 i=1;
 count=1;
 obs=ob_round(glo_gosa_obs,glo_rand_size);
+po_i=1;
 
 %ナビゲーション
 while 1
-   [p.start,up_obs,gosa_obs]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.');
+   [p.start,up_obs,gosa_obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i);
    l=len(wp(:,i).',p.start.');
    if count==1
    delete(kill);
@@ -432,7 +433,7 @@ end
 end
 
 %% local plan
-function [s,up_obs,gosa_obs] = DynamicWindowApproachSample_k(start,goal,obstacle,path)
+function [s,up_obs,gosa_obs,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 global glo_obs;
@@ -441,9 +442,9 @@ global glo_rand_size;
 global drive_cdc;
 obstacleR=0.5;%衝突判定用の障害物の半径
 global dt; 
-global po_i;
+global po_cdc;
 dt=0.1;%刻み時間[s]
-
+Goal_tor=3.0;
 %ロボットの力学モデル
 %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
 % 速度解像度[m/s],回頭速度解像度[rad/s]]
@@ -485,7 +486,7 @@ obs=ob.';
 po_cdc(po_i)=potential(up_obs,s_x,rand_size);
 sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
-save('potential_cdc_8_v2.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
+save('potential_cdc_8_v1.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
 if i>1
     delete(d_q);
     delete(d_g);
@@ -499,7 +500,7 @@ end
 
 
 %ゴール判定
-if norm(x(1:2)-goal')<3.0
+if norm(x(1:2)-goal')<Goal_tor
     disp('Arrive Goal!!');
     s=[x(1);x(2)];
     delete(b);
@@ -511,17 +512,21 @@ if  i > 30 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:
 end
 
 if  i > 40 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-40,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-40,2)) < 1.0 
-    evalParam(1)=2.0;    
-    evalParam(2)=0.2;
-    evalParam(5)=0.3;
+    obstacleR=0.0;
+    evalParam(6)=0.3;
 end
 
 if  i > 100 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-100,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-100,2)) < 1.0 
+    Goal_tor=5.0;
+end
+
+if  i > 150 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-150,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-150,2)) < 1.0 
     disp('Skip Waypoint');
     s=[x(1);x(2)];
     delete(b);
     break;
 end
+
 if i>1    
     delete(d_x);   
 end
