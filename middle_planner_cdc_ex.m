@@ -1,5 +1,8 @@
 %% 読み込みとプロット
 clear all;
+numFiles = 10;
+for N=3:numFiles
+hold off;
 global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
@@ -14,7 +17,9 @@ slip=0;
 glo_slip_x = 0;
 glo_slip_y = 0;
 dt=0;
-load("path_interp_8_v1.mat");
+drive_cdc=[];
+currentFile = sprintf('path_interp_%d_v1.mat',N);
+load(currentFile);
 path=drive_cdc;
 drive_cdc=[];
 p.start=[0;0];
@@ -34,32 +39,32 @@ end
 hold on;
 
 %% 曲率
-
 [x,y]=ginput;
-wp=[x.';
-    y.'];
-%{
-wp_x=path(1,:).';
-wp_y=path(2,:).';
-p_wp=[wp_x,wp_y];
-[L2,R2,K2] = curvature(p_wp);
-quiver(wp_x,wp_y,K2(:,1),K2(:,2));
-hold on;
-j=1;
+wp=[x.';y.'];
 
-con_wp_x=[];
-con_wp_y=[];
-for i=1:length(wp_x)
-    if abs(K2(i,1)) > 1 || abs(K2(i,2)) > 1 || i==length(wp_x)
-     con_wp_x(j)=wp_x(i);
-     con_wp_y(j)=wp_y(i);
-     j=j+1;
-    end
-end
-   
-wp = [con_wp_x;con_wp_y];
-%}
-save("wp_8_v1.mat","wp");
+% wp_x=path(1,:).';
+% wp_y=path(2,:).';
+% p_wp=[wp_x,wp_y];
+% [L2,R2,K2] = curvature(p_wp);
+% quiver(wp_x,wp_y,K2(:,1),K2(:,2));
+% hold on;
+% j=1;
+% 
+% con_wp_x=[];
+% con_wp_y=[];
+% Zero=[0 0];
+% for i=2:length(wp_x)-1
+%     if norm(K2(i-1,:)-Zero) < norm(K2(i,:)-Zero) && norm(K2(i+1,:)-Zero) < norm(K2(i,:)-Zero) && atan(abs(K2(i,2))/abs(K2(i,1c))) > 1.0
+%      con_wp_x(j)=wp_x(i);
+%      con_wp_y(j)=wp_y(i);
+%      j=j+1;
+%     end
+% end
+%    
+% wp = [con_wp_x;con_wp_y];
+
+currentFile = sprintf('wp_%d_v1.mat',N);
+save(currentFile,"wp");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -87,9 +92,10 @@ count=1;
 obs=ob_round(glo_gosa_obs,glo_rand_size);
 po_i=1;
 
+tic
 %ナビゲーション
 while 1
-   [p.start,up_obs,gosa_obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i);
+   [p.start,up_obs,gosa_obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i,N);
    l=len(wp(:,i).',p.start.');
    if count==1
    delete(kill);
@@ -104,8 +110,7 @@ while 1
    i=i+1;
    %[b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成
-   if len(wp(:,length(wp(1,:))).',p.start.')<0.7 
-       fx(wp(:,i),p.start);
+   if length(wp(1,:))==i
        disp("Finish");
        break;
    end
@@ -126,7 +131,9 @@ while 1
    pause(0.001);
 end
 
+toc
 
+end
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
     po=0;
@@ -433,7 +440,7 @@ end
 end
 
 %% local plan
-function [s,up_obs,gosa_obs,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i)
+function [s,up_obs,gosa_obs,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i,N)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 global glo_obs;
@@ -486,7 +493,9 @@ obs=ob.';
 po_cdc(po_i)=potential(up_obs,s_x,rand_size);
 sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
-save('potential_cdc_8_v1.mat','glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
+
+currentFile = sprintf('potential_cdc_%d_v1.mat',N);
+save(currentFile,'glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
 if i>1
     delete(d_q);
     delete(d_g);
@@ -674,8 +683,15 @@ function path_dist=CalcPathDistEval(x,path)
 theta=toDegree(x(3));
 for i=1:length(path(:,1))
     if path(i,2)>x(2)
-        Goal_path=[path(i+7,1),path(i+7,2)];
-        break;
+        if i+7 > length(path(:,1))
+            Goal_path=[path(length(path(:,1)),1),path(length(path(:,1)),2)];
+            break;
+        else
+            Goal_path=[path(i+7,1),path(i+7,2)];
+            break;
+        end
+    else
+        Goal_path=[path(length(path(:,1)),1),path(length(path(:,1)),2)];
     end
 end
 pathTheta=toDegree(atan2(Goal_path(2)-x(2),Goal_path(1)-x(1)));

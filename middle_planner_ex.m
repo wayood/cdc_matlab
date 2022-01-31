@@ -1,5 +1,7 @@
 %% 読み込みとプロット
 clear all;
+numFiles = 10;
+for N=1:numFiles
 global cdc_length;
 cdc_length=0.5;%m単位で補正ポイントを設定
 global glo_obs;
@@ -13,7 +15,8 @@ slip=0;
 glo_slip_x=0;
 glo_slip_y=0;
 dt=0;
-load("path_interp_8.mat");
+currentFile = sprintf('path_interp_%d_v1.mat',N);
+load(currentFile);
 global drive;
 global po;
 po=[];
@@ -52,7 +55,8 @@ end
 
 wp=[wp p.goal];
 %}
-load("wp_8_v1.mat");
+currentFile = sprintf('wp_%d_v1.mat',N);
+load(currentFile,"wp");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -81,7 +85,7 @@ po_i=1;
 
 %ナビゲーション
 while 1
-   [p.start,obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i);
+   [p.start,obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i,N);
    l=len(wp(:,i).',p.start.');
    i=i+1;
    %[b,w]=animation(up_obs,wp,p,i,rand_size);
@@ -94,7 +98,7 @@ while 1
    count=count+1;
    pause(0.001);
 end
-
+end
 
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
@@ -339,7 +343,7 @@ end
 end
 
 %% local plan
-function [s,ob,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i)
+function [s,ob,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i,N)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 
@@ -350,7 +354,7 @@ global glo_gosa_obs;
 global glo_rand_size;
 global drive;
 global po;
-Goal_tor=0.3;
+Goal_tor=3.0;
 %ロボットの力学モデル
 %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
 % 速度解像度[m/s],回頭速度解像度[rad/s]]
@@ -388,7 +392,8 @@ obs=ob.';
 po(po_i)=potential(up_obs,start.',rand_size);
 sum_po=sum(po)/po_i;
 po_i=po_i+1;
-save('potential_8_v1.mat','drive','po','sum_po','path');
+currentFile = sprintf('potential_%d_v1.mat',N);
+save(currentFile,'drive','po','sum_po','path');
 if i>1
     delete(d_q);
     delete(d_g);
@@ -574,8 +579,13 @@ function path_dist=CalcPathDistEval(x,path)
 theta=toDegree(x(3));
 for i=1:length(path(:,1))
     if path(i,2)>x(2)
-        Goal_path=[path(i+7,1),path(i+7,2)];
-        break;
+        if i+7 > length(path(:,1))
+            Goal_path=[path(length(path(:,1)),1),path(length(path(:,1)),2)];
+            break;
+        else
+            Goal_path=[path(i+7,1),path(i+7,2)];
+            break;
+        end
     end
 end
 pathTheta=toDegree(atan2(Goal_path(2)-x(2),Goal_path(1)-x(1)));

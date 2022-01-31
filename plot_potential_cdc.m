@@ -1,6 +1,6 @@
-load('potential_8_v1.mat');%軌道補正なし
-load('potential_cdc_8_v1.mat');%軌道補正込み
-load('potential_cruise_8.mat');%指示軌道ポテンシャル場
+load('potential_2_v1.mat');%軌道補正なし
+load('potential_cdc_2_v1.mat');%軌道補正込み
+load('potential_cruise_2.mat');%指示軌道ポテンシャル場
 x=100;
 y=100;
 Potential_Field(glo_obs,glo_rand_size,x,y);
@@ -27,20 +27,34 @@ pause();
 
 %% 補正によるSafeRateを表現
 po_cruise_st=po_cruise;
+po_cdc_st=po_cdc;
+po_st=po;
+
+hold off;
+i=1:length(po_cruise(1,:));
+plot(i,po_cruise(i),'b');
+hold on;
+i=1:length(po_cdc(1,:));
+plot(i,po_cdc(i),'r');
+hold on;
+grid on;
+xlabel('x[m]');
+ylabel('potential');
 
 %微分値とFFTによる前処理でポテンシャル遷移を導出
-po_cruise=differential(po_cruise);
-po_cdc=differential(po_cdc);
-po=differential(po);
-po_cruise=FFT(po_cruise);
-po=FFT(po);
-po_cdc=FFT(po_cdc);
+ po_cruise=differential(po_cruise);
+ po_cdc=differential(po_cdc);
+ po=differential(po);
+% po_cruise=FFT(po_cruise);
+% po=FFT(po);
+% po_cdc=FFT(po_cdc);
 
 
 %動的計画法による非線形マッチングの利用（軌道補正あり）
-[cost,from]=DP_prepare(po_cruise,po_cdc);
-[tmp_x,tmp_y]=DP_matching(cost,from);
-[po_cruise,po_cdc]=GradientSR(po_cruise,po_cdc,tmp_x,tmp_y);
+
+[empty,tmp_i,tmp_t]=dtw(po_cruise,po_cdc);
+[po_cruise,po_cdc]=GradientSR(po_cruise_st,po_cdc_st,tmp_i,tmp_t);
+PO=po_cruise;
 
 %補正後のLocal軌道
 for i=1:length(po_cruise)
@@ -50,9 +64,8 @@ for i=1:length(po_cruise)
 end
 
 %動的計画法による非線形マッチングの利用（軌道補正なし）
-[cost,from]=DP_prepare(po_cruise_st,po);
-[tmp_x,tmp_y]=DP_matching(cost,from);
-[po_cruise,po]=GradientSR(po_cruise_st,po,tmp_x,tmp_y);
+[empty,tmp_i,tmp_t]=dtw(po_cruise_st,po);
+[po_cruise,po]=GradientSR(po_cruise_st,po_st,tmp_i,tmp_t);
 
 for i=1:length(po_cruise)
  sr_st_initial_nocdc(i)=(po_cruise(i)-sum_po_cruise).^2;
@@ -71,11 +84,11 @@ hold on;
 %% ポテンシャル場を二次元プロット
 pause();
 hold off;
-i=1:length(drive(1,:));
-plot(i,z(i),'b');
+i=1:length(PO(1,:));
+plot(i,PO(i),'b');
 hold on;
-i=1:length(drive_cdc(1,:));
-plot(i,z_cdc(i),'r');
+i=1:length(po_cdc(1,:));
+plot(i,po_cdc(i),'r');
 hold on;
 grid on;
 xlabel('x[m]');
@@ -124,9 +137,9 @@ function p_i=FFT(p_i)
 end
 %微分値を出力
 function p_ini=differential(p_i)  
-    for i=1:length(p_i)-1
-        p_ini(i)=p_i(i+1)-p_i(i);
-    end
+     for i=1:length(p_i)-1
+         p_ini(i)=p_i(i+1)-p_i(i);
+     end
 end
 
 %最小コストとマップの作成
@@ -196,12 +209,6 @@ end
 
 %対応するポテンシャル場対して割り振り
 function [z,po_cdc]=GradientSR(p_i,p_t,tmp_i,tmp_t)
-     i=length(tmp_i):-1:1;
-     j=1:length(tmp_i);
-     tmp_i(j)=tmp_i(i);
-     i=length(tmp_i):-1:1;
-     j=1:length(tmp_i);
-     tmp_t(j)=tmp_t(i);
      for i=1:length(tmp_i)
          z(i)=p_i(tmp_i(i));
          po_cdc(i)=p_t(tmp_t(i));
