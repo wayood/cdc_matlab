@@ -1,7 +1,7 @@
 %% 読み込みとプロット
 clear all;
 numFiles = 10;
-for N=3:numFiles
+for N=1:numFiles
 hold off;
 global glo_obs;
 global glo_gosa_obs;
@@ -38,30 +38,11 @@ if length(path)>=1
 end
 hold on;
 
-%% 曲率
-[x,y]=ginput;
-wp=[x.';y.'];
+%% 折線近似
 
-% wp_x=path(1,:).';
-% wp_y=path(2,:).';
-% p_wp=[wp_x,wp_y];
-% [L2,R2,K2] = curvature(p_wp);
-% quiver(wp_x,wp_y,K2(:,1),K2(:,2));
-% hold on;
-% j=1;
-% 
-% con_wp_x=[];
-% con_wp_y=[];
-% Zero=[0 0];
-% for i=2:length(wp_x)-1
-%     if norm(K2(i-1,:)-Zero) < norm(K2(i,:)-Zero) && norm(K2(i+1,:)-Zero) < norm(K2(i,:)-Zero) && atan(abs(K2(i,2))/abs(K2(i,1c))) > 1.0
-%      con_wp_x(j)=wp_x(i);
-%      con_wp_y(j)=wp_y(i);
-%      j=j+1;
-%     end
-% end
-%    
-% wp = [con_wp_x;con_wp_y];
+
+
+wp = DouglasPeucker(path,0.3);
 
 currentFile = sprintf('wp_%d_v1.mat',N);
 save(currentFile,"wp");
@@ -77,7 +58,6 @@ for i=1:length(wp(1,:))-1
 end
 kill_point(length(wp(:,1)),:)=[];
     
-pause();
 
 global wp_init;
 wp_init = wp;
@@ -149,6 +129,40 @@ function po=potential(obs,move,size)
      end
      po=po+p;
     end
+end
+
+function hough=Hough(x,y)
+  pause();
+  hold off;
+  threshold=0.6;
+  for i=1:length(x)
+      j=1;
+      for theta=0:.1:180
+          hough(i).rho(j)=x(i)*cos(theta)+y(i)*sin(theta);
+          hough(i).theta(j)=theta;
+          j=j+1;
+      end
+  end
+  
+  
+  count=zeros(length(x));
+  for io=1:length(x)
+     for j=1:length(theta)
+         for i=1:length(x)
+             set=xcorr2(hough(io),hough(i));
+             if set>threshold
+                disp(j);
+                disp(i);
+                count(io)=count(io)+1;
+            end
+         end
+      end
+  end
+  %plot(st_p(1,1),st_p(1,2),'r:.','MarkerSize',3);
+  %xlim([0 180]);
+  %pause(0.1);
+  %hold on;
+  pause();
 end
 
 %% 誤差モデル計算　
