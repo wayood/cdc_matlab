@@ -12,30 +12,33 @@ load(currentfile);%指示軌道ポテンシャル場
 x=100;
 y=100;
 
+hold off;
 %ポテンシャル場を可視化
-%Potential_Field(glo_obs,glo_rand_size,x,y);
-%hold on;
+
+Potential_Field(glo_obs,glo_rand_size,x,y);
+hold on;
 
 %% 三次元的にポテンシャル場で評価
 %ここでは真の障害物に対しての安定性を補正ありなしで判別
 
 for i=1:length(drive(1,:))
     z(i)=potential(glo_obs,drive(:,i),glo_rand_size);
-    %{
+    
     plot3(drive(1,i)+51,drive(2,i),z(i),'o','Color','b');
     hold on;
-    %}
+    
 end
 s1=sum(z)/i;
 
 for j=1:length(drive_cdc(1,:))
     z_cdc(j)=potential(glo_obs,drive_cdc(:,j),glo_rand_size);
-    %{
+    
     plot3(drive_cdc(1,j)+51,drive_cdc(2,j),z_cdc(j),'o','Color','r');
     hold on;
-    %}
+    
 end
 s2=sum(z_cdc)/j;
+
 
 %% 補正によるSafeRateを表現
 po_cruise_st=po_cruise;
@@ -90,13 +93,13 @@ end
 sr_cdc=sum(sr_st_cdc_con)/sqrt(sum(sr_st_initial_cdc))/sqrt(sum(sr_st_cdc));
 sr=sum(sr_st_nocdc_con)/sqrt(sum(sr_st_initial_nocdc))/sqrt(sum(sr_st_nocdc));
 
-%{
+
 SR=[sr_cdc,sr];
 T=array2table(SR,'VariableNames',{'SR_cdc','SR'});
 fig = uifigure;
 uit = uitable(fig,'Data',T);
 hold on;
-%}
+pause();
 
 %% ポテンシャル場を二次元プロット
 

@@ -1,7 +1,11 @@
 %% 読み込みとプロット
 clear all;
 numFiles = 10;
-for N=1:numFiles
+numROOP = 15;
+global N;
+global NU;
+for N=4:numFiles
+for NU=5:numROOP
 hold off;
 global glo_obs;
 global glo_gosa_obs;
@@ -44,7 +48,7 @@ hold on;
 
 wp = DouglasPeucker(path,0.3);
 
-currentFile = sprintf('wp_%d_v1.mat',N);
+currentFile = sprintf('wp_%d_v%d.mat',N,NU);
 save(currentFile,"wp");
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
@@ -75,7 +79,7 @@ po_i=1;
 tic
 %ナビゲーション
 while 1
-   [p.start,up_obs,gosa_obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i,N);
+   [p.start,up_obs,gosa_obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i);
    l=len(wp(:,i).',p.start.');
    if count==1
    delete(kill);
@@ -90,7 +94,7 @@ while 1
    i=i+1;
    %[b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成
-   if length(wp(1,:))==i
+   if length(wp(1,:))==i-1
        disp("Finish");
        break;
    end
@@ -108,11 +112,12 @@ while 1
        w(j)=plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
        kill_p(j-i+2,:)=kill_p_ex;
    end
+   w(j+1)=plot(wp(1,j+1),wp(2,j+1),'g:o','MarkerSize',10);
    pause(0.001);
 end
 
 toc
-
+end
 end
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
@@ -129,40 +134,6 @@ function po=potential(obs,move,size)
      end
      po=po+p;
     end
-end
-
-function hough=Hough(x,y)
-  pause();
-  hold off;
-  threshold=0.6;
-  for i=1:length(x)
-      j=1;
-      for theta=0:.1:180
-          hough(i).rho(j)=x(i)*cos(theta)+y(i)*sin(theta);
-          hough(i).theta(j)=theta;
-          j=j+1;
-      end
-  end
-  
-  
-  count=zeros(length(x));
-  for io=1:length(x)
-     for j=1:length(theta)
-         for i=1:length(x)
-             set=xcorr2(hough(io),hough(i));
-             if set>threshold
-                disp(j);
-                disp(i);
-                count(io)=count(io)+1;
-            end
-         end
-      end
-  end
-  %plot(st_p(1,1),st_p(1,2),'r:.','MarkerSize',3);
-  %xlim([0 180]);
-  %pause(0.1);
-  %hold on;
-  pause();
 end
 
 %% 誤差モデル計算　
@@ -454,10 +425,12 @@ end
 end
 
 %% local plan
-function [s,up_obs,gosa_obs,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i,N)
+function [s,up_obs,gosa_obs,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 global glo_obs;
+global N;
+global NU;
 global glo_gosa_obs;
 global glo_rand_size;
 global drive_cdc;
@@ -498,17 +471,22 @@ drive_cdc=[drive_cdc s_x];
 if i==1
     [me_gosa_obs]=gosa_hozon(glo_gosa_obs);
 end
-[ang_wp,sen_num,cur_obs]=sensor_range(me_gosa_obs,start.',goal.');
-[up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
+if isempty(me_gosa_obs(3,:)) == 0
+    me_gosa_obs(3,:)=[];
+end
+[cur_obs]=gosa_move(me_gosa_obs,start.',x(3),u(1,1));
+[ang_wp,sen_num,up_obs]=sensor_range(cur_obs,start.',goal.');
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(up_obs,rand_size);
 obs=ob.';
 %kill_line=cdc_obs_line(gosa_obs,up_obs);
+up_obs(3,:)=1;
+me_gosa_obs(3,:)=1;
 po_cdc(po_i)=potential(up_obs,s_x,rand_size);
 sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
 
-currentFile = sprintf('potential_cdc_%d_v1.mat',N);
+currentFile = sprintf('potential_cdc_%d_v%d.mat',N,NU);
 save(currentFile,'glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
 if i>1
     delete(d_q);
