@@ -1,7 +1,14 @@
 %% 読み込みとプロット
 clear all;
-numFiles = 10;
+numFiles = 14;
+numROOP = 15;
+global N;
+global NU;
+
 for N=1:numFiles
+for NU=1:numROOP
+try
+hold off;
 global cdc_length;
 cdc_length=0.5;%m単位で補正ポイントを設定
 global glo_obs;
@@ -15,48 +22,40 @@ slip=0;
 glo_slip_x=0;
 glo_slip_y=0;
 dt=0;
-currentFile = sprintf('path_interp_%d_v1.mat',N);
+currentFile = sprintf('path_interp_%d_150.mat',N);
 load(currentFile);
 global drive;
 global po;
 po=[];
 drive=[];
 p.start=[0;0];
-p.goal=[0;20];
+path=drive_cdc;
+
+%% プロット関数
+%{
 graph(glo_gosa_obs,p,glo_rand_size);
 
 for io=1:length(glo_obs(1,:))
   en_plot_red(glo_obs(:,io).',glo_rand_size(io));
   hold on;
 end
-path=drive_cdc;
+
+
 if length(path)>=1
     plot(path(1,:),path(2,:),'-r','MarkerSize',3);
     hold on;
 end
 hold on;
 
-%% 曲率
-%{
-wp_x=flip(path(:,1));
-wp_y=flip(path(:,2));
-p_wp=[wp_x,wp_y];
-[L2,R2,K2] = curvature(p_wp);
-quiver(wp_x,wp_y,K2(:,1),K2(:,2));
-hold on;
-
-j=1;
-for i=2:length(wp_x)-1
-    if K2(i,1) ~= 0 && K2(i,2) ~= 0 
-        wp(:,j)=[wp_x(i);wp_y(i)];
-        j=j+1;
-    end
-end
-
-wp=[wp p.goal];
 %}
-currentFile = sprintf('wp_%d_v1.mat',N);
+
+%% WPを入力
+
+currentFile = sprintf('wp_%d_150_v%d.mat',N,NU);
 load(currentFile,"wp");
+
+%% プロット関数
+%{
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
@@ -68,8 +67,7 @@ for i=1:length(wp(1,:))-1
   kill_point(:,i)=twopoint(wp(:,i+1),wp(:,i));
 end
 kill_point(length(wp(:,1)),:)=[];
-
-pause();
+%}
 
 global wp_init;
 wp_init = wp;
@@ -85,21 +83,25 @@ po_i=1;
 
 %ナビゲーション
 while 1
-   [p.start,obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i,N);
+   
+   [p.start,obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i);
    l=len(wp(:,i).',p.start.');
    i=i+1;
-   %[b,w]=animation(up_obs,wp,p,i,rand_size);
+   
    %ここでアニメーションが完成
-   if len(wp(:,length(wp(1,:))).',p.start.')<0.7 
-       fx(wp(:,i),p.start);
+   if length(wp(1,:)) == i-1 
        disp("Finish");
        break;
    end
    count=count+1;
    pause(0.001);
+   
+end
+catch ME
+     continue;
 end
 end
-
+end
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
     po=0;
@@ -123,6 +125,9 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
  sliprate(ang_wp,v);
  global glo_slip_x;
  global glo_slip_y;
+ if isempty(obs(3,:)) == 0
+     obs(3,:)= [];
+ end
  for i=1:length(obs(1,:))
     r(i)=len(obs(:,i).',start.');
     if r(i)<1
@@ -194,7 +199,7 @@ function graph(glo_gosa_obs,p,size)
     xlabel('x[m]')
     ylabel('y[m]')
     xlim([-50 50]);
-    ylim([0 100]);
+    ylim([0 300]);
 end
 
 %% 誤差を明確化ラインプロット
@@ -242,16 +247,16 @@ function [rand_size,cur_gosa_obs]=sensor_judge(gosa_obs,sen_num,glo_rand_size)
 end
 
 %% 視野角を考慮
-function [ang_wp,sen_num,sen_obs]=sensor_range(obs,start,wp)
+function [ang_wp,sen_num,sen_obs]=sensor_range(obs,start,ang)
    %視野の射程距離
    range_base=50;
-   obs(3,:)=[];
+
+   ang_90=pi/2-ang;
+   b=start(2,1)-start(1,1)*tan(ang_90);
    for i=1:length(obs(1,:))
-     [ang_wp,range_wpbase_max,range_wpbase_min,range_s,range_ln]=siya(obs(:,i),start,wp);
-     if start(2,1)>obs(2,i) 
-        obs(:,i)=[-1;-1];
-        sen_num(i)=1;%視野に入るかの判定
-      elseif range_s>range_wpbase_min && range_s<range_wpbase_max && range_ln<range_base
+      [ang_wp,range_wpbase_max,range_wpbase_min,range_s,range_ln]=siya(obs(:,i),start,ang);
+      
+      if range_s>range_wpbase_min && range_s<range_wpbase_max && range_ln<range_base
         sen_num(i)=0;
       else
         obs(:,i)=[-1;-1];
@@ -263,21 +268,13 @@ function [ang_wp,sen_num,sen_obs]=sensor_range(obs,start,wp)
 end
 
 %% 視野角計算
-function   [ang_wp,range_wpbase_max,range_wpbase_min,range_s,range_l]=siya(obs,start,wp)
+function   [ang,range_wpbase_max,range_wpbase_min,range_s,range_l]=siya(obs,start,ang)
+   range_wpbase_min=ang-(11*pi/36);
+   range_wpbase_max=ang+(11*pi/36);
    range_l=sqrt((obs(1,1)-start(1,1))^2+(obs(2,1)-start(2,1))^2);
    range_x=obs(1,1)-start(1,1);
-   range_l1=sqrt((wp(1,1)-start(1,1))^2+(wp(2,1)-start(2,1))^2);
-   range_x1=wp(1,1)-start(1,1);
-   range_wpbase_min=acos(range_x1/range_l1)-(11*pi/36);
-   range_wpbase_max=acos(range_x1/range_l1)+(11*pi/36);
-   ang_wp=acos(range_x1/range_l1);
-   range_s=acos(range_x/range_l);
-end
-
-function ang=angular(goal,start)
- length_x=goal(1,1)-start(1,1);
- length_r=sqrt((goal(1,1)-start(1,1))^2+(goal(2,1)-start(2,1))^2);
- ang=acos(length_x/length_r);
+   range_y=obs(2,1)-start(2,1);
+   range_s=atan2(range_y,range_x);
 end
 
 %% 二点間のプロット
@@ -343,7 +340,7 @@ end
 end
 
 %% local plan
-function [s,ob,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i,N)
+function [s,ob,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 
@@ -354,6 +351,9 @@ global glo_gosa_obs;
 global glo_rand_size;
 global drive;
 global po;
+global N;
+global NU;
+
 Goal_tor=3.0;
 %ロボットの力学モデル
 %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
@@ -369,6 +369,7 @@ result.x=[];
 % Main loop
 for i=1:5000
 %DWAによる入力値の計算
+
 if i==1
     [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR,path);
 else
@@ -381,19 +382,23 @@ result.x=[result.x; x'];
 start=[x(1),x(2)];
 s_x=[x(1);x(2)];
 drive=[drive s_x];
+
 if i==1
     [me_gosa_obs]=gosa_hozon(glo_gosa_obs);
 end
-[ang_wp,sen_num,cur_obs]=sensor_range(me_gosa_obs,start.',goal.');
-[up_obs]=gosa_move(cur_obs,start.',x(3),u(1,1));
+
+[cur_obs]=gosa_move(me_gosa_obs,start.',x(3),u(1,1));
+[ang_wp,sen_num,up_obs]=sensor_range(cur_obs,start.',x(3));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(up_obs,rand_size);
 obs=ob.';
 po(po_i)=potential(up_obs,start.',rand_size);
 sum_po=sum(po)/po_i;
 po_i=po_i+1;
-currentFile = sprintf('potential_%d_v1.mat',N);
+currentFile = sprintf('potential_%d_150_v%d.mat',N,NU);
 save(currentFile,'drive','po','sum_po','path');
+%% プロット関数
+%{
 if i>1
     delete(d_q);
     delete(d_g);
@@ -404,12 +409,13 @@ end
 for j=1:length(up_obs(1,:))
   b(j)=en_plot_orange(up_obs(:,j).',rand_size(j));
 end
+%}
 
 %ゴール判定
 if norm(x(1:2)-goal')<Goal_tor
     disp('Arrive Goal!!');
     s=[x(1);x(2)];
-    delete(b);
+%     delete(b);
     break;
 end
 
@@ -429,13 +435,15 @@ end
 if  i > 150 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-150,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-150,2)) < 1.0 
     disp('Skip Waypoint');
     s=[x(1);x(2)];
-    delete(b);
+%     delete(b);
     break;
 end
+
+%% プロット関数
+%{
 if i>1    
     delete(d_x);   
 end
-    
     %====Animation====
  ArrowLength=0.5;%矢印の長さ
  %ロボット
@@ -454,10 +462,12 @@ end
     end
  end
  drawnow;
+%}
+
+ pause(0.0001);
 end
 %toc
 end
-%movie2avi(mov,'movie.avi');
  
 
 function [u,trajDB]=DynamicWindowApproach(x,model,goal,evalParam,ob,R,path)

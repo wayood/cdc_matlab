@@ -1,5 +1,10 @@
 %% 軌道補正アルゴリズム
 clear all;
+numFiles=30;
+global N;
+for N=1:numFiles
+hold off;
+
 global cdc_length;
 cdc_length=0.5;%m単位で補正ポイントを設定
 global glo_obs;
@@ -7,10 +12,10 @@ global glo_gosa_obs;
 global glo_rand_size;
 %% パラメータ設定
 p.start=[0;0];
-p.goal=[0;100];
-for i=1:320
+p.goal=[0;50];
+for i=1:700
     ran_x=-50+100*rand;
-    ran_y=100*rand;
+    ran_y=300*rand;
     glo_rand_size(i)=0.3+1.4*rand;
     glo_obs(1,i)=ran_x;
     glo_obs(2,i)=ran_y;
@@ -18,20 +23,17 @@ end
 
 [glo_gosa_obs]=gosamodel(glo_obs,p);%経路生成時のLM座標
 obs=ob_round(glo_gosa_obs,glo_rand_size);
-graph(glo_gosa_obs,p,glo_rand_size);
+%graph(glo_gosa_obs,p,glo_rand_size);
 DynamicWindowApproachSample_k(p.start.',p.goal.',obs.')
-path=PathSmoothing(path);
-if length(path)>=1
-    plot(path(:,1),path(:,2),'-r','MarkerSize',3);
-    hold on;
-end
-
+%{
 hold on;
 for io=1:length(glo_obs(1,:))
   en_plot_red(glo_obs(:,io).',glo_rand_size(io));
   hold on;
 end
-
+%}
+disp("finish !!");
+end
 
 %% 誤差モデル計算　
 %距離による関係性を考えた。
@@ -69,7 +71,7 @@ function graph(glo_gosa_obs,p,size)
     xlabel('x[m]')
     ylabel('y[m]')
     xlim([-50 50]);
-    ylim([0 100]);
+    ylim([0 200]);
 end
 
 %% ポテンシャル場で評価
@@ -179,8 +181,9 @@ global glo_rand_size;
 global drive_cdc;
 obstacleR=0.2;%衝突判定用の障害物の半径
 global dt; 
+global N;
 dt=0.1;%刻み時間[s]
-
+drive_cdc=[];
 i_po=1;
 
 %ロボットの力学モデル
@@ -210,14 +213,30 @@ drive_cdc=[drive_cdc s_x];
 po_cruise(i_po)=potential(gosa_obs,s_x,rand_size);
 sum_po_cruise=sum(po_cruise)/i_po;
 i_po=i_po+1;
-save('potential_cruise_1.mat','po_cruise','sum_po_cruise');
-save('path_interp_1_v1.mat','drive_cdc','glo_obs','glo_gosa_obs','glo_rand_size');
 
+%% saveする際のファイル名設定
+currentFile = sprintf('potential_cruise_%d_50.mat',N);
+save(currentFile,'po_cruise','sum_po_cruise');
+currentFile = sprintf('path_interp_%d_50.mat',N);
+save(currentFile,'drive_cdc','glo_obs','glo_gosa_obs','glo_rand_size');
+
+if i>20
+    
+    V_x=var(drive_cdc(1,[i-19 i]));
+    V_y=var(drive_cdc(2,[i-19 i]));
+
+    if V_x < 0.1 && V_y <0.1
+        disp("Fuck");
+        break;
+    end
+end
+%{
 if i>1
     delete(d_q);
     delete(d_g);
     delete(d_tr);
 end
+%}
 
 
 %ゴール判定
@@ -227,6 +246,7 @@ if norm(x(1:2)-goal')<1.0
     break;
 end
 
+%{
 if i>1    
     delete(d_x);   
 end
@@ -248,6 +268,8 @@ end
        hold on;
     end
  end
+%}
+
  drawnow;
 end
 %toc

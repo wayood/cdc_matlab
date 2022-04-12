@@ -1,12 +1,14 @@
 %plotをコメントアウト　適宜確認可能
 numFiles = 10;
+NumFiles = 15;
 for N=1:numFiles
-   
-currentfile=sprintf('potential_%d_v1.mat',N);
+for NU=1:NumFiles   
+try
+currentfile=sprintf('potential_%d_v3_vv%d.mat',N,NU);
 load(currentfile);%軌道補正なし
-currentfile=sprintf('potential_cdc_%d_v1.mat',N);
+currentfile=sprintf('potential_cdc_%d_v3_vv%d.mat',N,NU);
 load(currentfile);%軌道補正込み
-currentfile=sprintf('potential_cruise_%d.mat',N);
+currentfile=sprintf('potential_cruise_%d_v3.mat',N);
 load(currentfile);%指示軌道ポテンシャル場
 
 x=100;
@@ -15,27 +17,29 @@ y=100;
 hold off;
 %ポテンシャル場を可視化
 
+%{
 Potential_Field(glo_obs,glo_rand_size,x,y);
 hold on;
+%}
 
 %% 三次元的にポテンシャル場で評価
 %ここでは真の障害物に対しての安定性を補正ありなしで判別
 
 for i=1:length(drive(1,:))
     z(i)=potential(glo_obs,drive(:,i),glo_rand_size);
-    
+    %{
     plot3(drive(1,i)+51,drive(2,i),z(i),'o','Color','b');
     hold on;
-    
+    %}
 end
 s1=sum(z)/i;
 
 for j=1:length(drive_cdc(1,:))
     z_cdc(j)=potential(glo_obs,drive_cdc(:,j),glo_rand_size);
-    
+    %{
     plot3(drive_cdc(1,j)+51,drive_cdc(2,j),z_cdc(j),'o','Color','r');
     hold on;
-    
+    %}
 end
 s2=sum(z_cdc)/j;
 
@@ -93,14 +97,13 @@ end
 sr_cdc=sum(sr_st_cdc_con)/sqrt(sum(sr_st_initial_cdc))/sqrt(sum(sr_st_cdc));
 sr=sum(sr_st_nocdc_con)/sqrt(sum(sr_st_initial_nocdc))/sqrt(sum(sr_st_nocdc));
 
-
+%{
 SR=[sr_cdc,sr];
 T=array2table(SR,'VariableNames',{'SR_cdc','SR'});
 fig = uifigure;
 uit = uitable(fig,'Data',T);
 hold on;
-pause();
-
+%}
 %% ポテンシャル場を二次元プロット
 
 %{
@@ -116,8 +119,12 @@ grid on;
 xlabel('x[m]');
 ylabel('potential');
 %}
-currentfile = sprintf('potential_evaluation_%d',N);
+currentfile = sprintf('potential_evaluation_%d_v3_vv%d',N,NU);
 save(currentfile,"sr","sr_cdc","s1","s2");
+catch ME
+    continue;
+end
+end
 end
 %% 関数系
 
