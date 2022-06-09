@@ -1,12 +1,13 @@
 %% 読み込みとプロット
 clear all;
-numFiles = 12;
+numFiles = 15;
 numROOP = 15;
 global N;
 global NU;
-
-for N=12:numFiles
-for NU=9:numROOP
+global GOAL;
+GOAL = 150;
+for N=1:numFiles
+for NU=1:numROOP
 try
 hold off;
 global glo_obs;
@@ -19,17 +20,18 @@ global glo_slip_x;
 global glo_slip_y;
 global po_cdc;
 po_cdc=[];
-slip=0;
+slip=30;
 glo_slip_x = 0;
 glo_slip_y = 0;
 dt=0;
 drive_cdc=[];
-currentFile = sprintf('path_interp_%d_150.mat',N);
+currentFile = sprintf('./path/path_interp_1_%d.mat',GOAL);
 load(currentFile);
 path=drive_cdc;
 drive_cdc=[];
 p.start=[0;0];
 
+%プロットポイントコメントアウト部分
 %{
 graph(glo_gosa_obs,p,glo_rand_size);
 
@@ -47,12 +49,11 @@ hold on;
 
 %% 折線近似
 
+wp = DouglasPeucker(path,0.51);
 
-
-wp = DouglasPeucker(path,0.3);
-
-currentFile = sprintf('wp_%d_150_v%d.mat',N,NU);
+currentFile = sprintf('./wp/wp_%d_%d_v%d.mat',N,GOAL,NU);
 save(currentFile,"wp");
+%プロットポイントコメントアウト部分
 %{
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
@@ -87,6 +88,7 @@ while 1
    [p.start,up_obs,gosa_obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i);
    l=len(wp(:,i).',p.start.');
 
+   %プロットポイントコメントアウト部分
    %{
    if count==1
    delete(kill);
@@ -101,7 +103,8 @@ while 1
    %}
 
    i=i+1;
-   %[b,w]=animation(up_obs,wp,p,i,rand_size);
+   %プロットポイントコメントアウト部分
+%    [b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成
    if length(wp(1,:))==i-1
        disp("Finish");
@@ -112,17 +115,20 @@ while 1
    Matrix_error(count)=mat_er;
    Plan_error(count)=plan_er;
    count=count+1;
+   currentFile = sprintf('./A_matrix/A_matrix_%d_%d_v%d.mat',N,GOAL,NU);
+   save(currentFile,"k_A","Matrix_error","Plan_error");
    c_path=[];
    path=[];
-   
+
+   %プロットポイントコメントアウト部分
    for j=i-1:length(wp(1,:))-1
-%        kill_p_ex=twopoint(wp(:,j+1),wp(:,j));
+%         kill_p_ex=twopoint(wp(:,j+1),wp(:,j));
        c_path=path_correct(wp(:,j+1),wp(:,j));
        path=[path c_path];
-%        w(j)=plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
-%        kill_p(j-i+2,:)=kill_p_ex;
+%          w(j)=plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
+%          kill_p(j-i+2,:)=kill_p_ex;
    end
-%    w(j+1)=plot(wp(1,j+1),wp(2,j+1),'g:o','MarkerSize',10);
+%      w(j+1)=plot(wp(1,j+1),wp(2,j+1),'g:o','MarkerSize',10);
    
 
    pause(0.001);
@@ -222,7 +228,8 @@ function sliprate(ang,v)
  global dt; 
  global glo_slip_x;
  global glo_slip_y;
- s=rand*30/100;
+ global slip;
+ s=rand*slip/100;
  v_real=(1-s)*v;
  slip_length=(v_real-v)*dt;
  x=slip_length*cos(ang);
@@ -457,6 +464,7 @@ global drive_cdc;
 obstacleR=0.5;%衝突判定用の障害物の半径
 global dt; 
 global po_cdc;
+global GOAL;
 dt=0.1;%刻み時間[s]
 Goal_tor=3.0;
 %ロボットの力学モデル
@@ -499,16 +507,17 @@ end
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(up_obs,rand_size);
 obs=ob.';
-
-%kill_line=cdc_obs_line(gosa_obs,up_obs);
+%プロットポイントコメントアウト部分
+%  kill_line=cdc_obs_line(gosa_obs,up_obs);
 up_obs(3,:)=1;
 me_gosa_obs(3,:)=1;
 po_cdc(po_i)=potential(up_obs,s_x,rand_size);
 sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
 
-currentFile = sprintf('potential_cdc_%d_150_v%d.mat',N,NU);
+currentFile = sprintf('./potential/potential_cdc_err%d_%d_v%d.mat',N,GOAL,NU);
 save(currentFile,'glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
+%プロットポイントコメントアウト部分
 %{
 if i>1
     delete(d_q);
@@ -526,9 +535,11 @@ end
 if norm(x(1:2)-goal')<Goal_tor
     disp('Arrive Goal!!');
     s=[x(1);x(2)];
-%     delete(b);
+    %プロットポイントコメントアウト部分
+%      delete(b);
     break;
 end
+
 
 if  i > 30 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-30,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-30,2)) < 1.0 
     obstacleR=0.1;
@@ -546,10 +557,12 @@ end
 if  i > 150 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-150,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-150,2)) < 1.0 
     disp('Skip Waypoint');
     s=[x(1);x(2)];
-%     delete(b);
+    %プロットポイントコメントアウト部分
+%       delete(b);
     break;
 end
 
+%プロットポイントコメントアウト部分
 %{
 if i>1    
     delete(d_x);   

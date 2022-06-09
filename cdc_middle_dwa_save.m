@@ -1,8 +1,11 @@
 %% 軌道補正アルゴリズム
 clear all;
-numFiles=30;
+numFiles=15;
 global N;
-for N=1:numFiles
+global GOAL;
+GOAL = 20;
+N = 1;
+while 1
 hold off;
 
 global cdc_length;
@@ -12,10 +15,10 @@ global glo_gosa_obs;
 global glo_rand_size;
 %% パラメータ設定
 p.start=[0;0];
-p.goal=[0;50];
-for i=1:700
+p.goal=[0;GOAL];
+for i=1:1000
     ran_x=-50+100*rand;
-    ran_y=300*rand;
+    ran_y=450*rand;
     glo_rand_size(i)=0.3+1.4*rand;
     glo_obs(1,i)=ran_x;
     glo_obs(2,i)=ran_y;
@@ -24,7 +27,7 @@ end
 [glo_gosa_obs]=gosamodel(glo_obs,p);%経路生成時のLM座標
 obs=ob_round(glo_gosa_obs,glo_rand_size);
 %graph(glo_gosa_obs,p,glo_rand_size);
-DynamicWindowApproachSample_k(p.start.',p.goal.',obs.')
+flag = DynamicWindowApproachSample_k(p.start.',p.goal.',obs.');
 %{
 hold on;
 for io=1:length(glo_obs(1,:))
@@ -32,7 +35,15 @@ for io=1:length(glo_obs(1,:))
   hold on;
 end
 %}
-disp("finish !!");
+if flag == 1
+    N=N+1;
+    disp("finish !!");
+end
+
+if N == numFiles + 1
+    break;
+end
+
 end
 
 %% 誤差モデル計算　
@@ -172,19 +183,21 @@ end
 end
 
 %% local plan
-function DynamicWindowApproachSample_k(start,goal,obstacle)
+function flag = DynamicWindowApproachSample_k(start,goal,obstacle)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
-global drive_cdc;
+global command_path;
 obstacleR=0.2;%衝突判定用の障害物の半径
 global dt; 
 global N;
+global GOAL;
 dt=0.1;%刻み時間[s]
-drive_cdc=[];
+command_path=[];
 i_po=1;
+flag = 0;
 
 %ロボットの力学モデル
 %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
@@ -207,7 +220,7 @@ x=f(x,u);%運動モデルによる移動
 result.x=[result.x; x'];
 start=[x(1),x(2)];
 s_x=[x(1);x(2)];
-drive_cdc=[drive_cdc s_x];
+command_path=[command_path s_x];
 [~,sen_num,gosa_obs]=sensor_range(glo_gosa_obs,start.',goal.');
 [rand_size,~]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 po_cruise(i_po)=potential(gosa_obs,s_x,rand_size);
@@ -215,18 +228,23 @@ sum_po_cruise=sum(po_cruise)/i_po;
 i_po=i_po+1;
 
 %% saveする際のファイル名設定
-currentFile = sprintf('potential_cruise_%d_50.mat',N);
-save(currentFile,'po_cruise','sum_po_cruise');
-currentFile = sprintf('path_interp_%d_50.mat',N);
-save(currentFile,'drive_cdc','glo_obs','glo_gosa_obs','glo_rand_size');
+currentFile_cruise = sprintf('./potential/potential_cruise_%d_%d.mat',N,GOAL);
+save(currentFile_cruise,'po_cruise','sum_po_cruise');
+currentFile_path = sprintf('./path/path_interp_%d_%d.mat',N,GOAL);
+save(currentFile_path,'command_path','glo_obs','glo_gosa_obs','glo_rand_size');
 
 if i>20
     
-    V_x=var(drive_cdc(1,[i-19 i]));
-    V_y=var(drive_cdc(2,[i-19 i]));
+    V_x=var(command_path(1,[i-19 i]));
+    V_y=var(command_path(2,[i-19 i]));
 
     if V_x < 0.1 && V_y <0.1
-        disp("Fuck");
+         disp("Fuck");
+         if abs(command_path(2,end) - goal(1,2)) > 10
+            delete(currentFile_path);
+            delete(currentFile_cruise);
+         end
+         flag = 0;
         break;
     end
 end
@@ -243,6 +261,7 @@ end
 if norm(x(1:2)-goal')<1.0
     disp('Arrive Goal!!');
     s=[x(1);x(2)];
+    flag = 1;
     break;
 end
 

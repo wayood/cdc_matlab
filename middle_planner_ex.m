@@ -1,10 +1,11 @@
 %% 読み込みとプロット
 clear all;
-numFiles = 14;
+numFiles = 15;
 numROOP = 15;
 global N;
 global NU;
-
+global GOAL;
+GOAL = 110;
 for N=1:numFiles
 for NU=1:numROOP
 try
@@ -22,7 +23,7 @@ slip=0;
 glo_slip_x=0;
 glo_slip_y=0;
 dt=0;
-currentFile = sprintf('path_interp_%d_150.mat',N);
+currentFile = sprintf('./path/path_interp_%d_%d.mat',N,GOAL);
 load(currentFile);
 global drive;
 global po;
@@ -51,9 +52,10 @@ hold on;
 
 %% WPを入力
 
-currentFile = sprintf('wp_%d_150_v%d.mat',N,NU);
+currentFile = sprintf('./wp/wp_%d_%d_v%d.mat',N,GOAL,NU);
 load(currentFile,"wp");
-
+%ポテンシャル場によるトレードオフ関係の検索
+wp(1,2:end) = wp(1,2:end) - N;
 %% プロット関数
 %{
 for i=1:length(wp(1,:))
@@ -353,7 +355,7 @@ global drive;
 global po;
 global N;
 global NU;
-
+global GOAL;
 Goal_tor=3.0;
 %ロボットの力学モデル
 %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
@@ -395,7 +397,7 @@ obs=ob.';
 po(po_i)=potential(up_obs,start.',rand_size);
 sum_po=sum(po)/po_i;
 po_i=po_i+1;
-currentFile = sprintf('potential_%d_150_v%d.mat',N,NU);
+currentFile = sprintf('./potential/potential_err-%d_%d_v%d.mat',N,GOAL,NU);
 save(currentFile,'drive','po','sum_po','path');
 %% プロット関数
 %{

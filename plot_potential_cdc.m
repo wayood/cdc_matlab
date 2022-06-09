@@ -1,18 +1,19 @@
 %plotをコメントアウト　適宜確認可能
 numFiles = 10;
 NumFiles = 15;
+GOAL = 110;
 for N=1:numFiles
 for NU=1:NumFiles   
 try
-currentfile=sprintf('potential_%d_v3_vv%d.mat',N,NU);
+currentfile=sprintf('./potential/potential_err-%d_110_v%d.mat',N,NU);
 load(currentfile);%軌道補正なし
-currentfile=sprintf('potential_cdc_%d_v3_vv%d.mat',N,NU);
+currentfile=sprintf('./potential/potential_cdc_%d_%d_v%d.mat',N,GOAL,NU);
 load(currentfile);%軌道補正込み
-currentfile=sprintf('potential_cruise_%d_v3.mat',N);
+currentfile=sprintf('./potential/potential_cruise_%d_%d.mat',N,GOAL);
 load(currentfile);%指示軌道ポテンシャル場
 
 x=100;
-y=100;
+y=GOAL;
 
 hold off;
 %ポテンシャル場を可視化
@@ -119,7 +120,7 @@ grid on;
 xlabel('x[m]');
 ylabel('potential');
 %}
-currentfile = sprintf('potential_evaluation_%d_v3_vv%d',N,NU);
+currentfile = sprintf('./potential/potential_evaluation_err-%d_%d_v%d',N,GOAL,NU);
 save(currentfile,"sr","sr_cdc","s1","s2");
 catch ME
     continue;
