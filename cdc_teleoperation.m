@@ -1,8 +1,9 @@
 %% 軌道補正アルゴリズム
+clear all;
 global cdc_length;
 cdc_length=0.5;%m単位で補正ポイントを設定
 
-%% パラメータ設定
+%% 初期宣言
 p.start=[0;0];
 global glo_obs;
 global glo_gosa_obs;
@@ -13,23 +14,40 @@ global slip;
 global glo_slip_x;
 global glo_slip_y;
 global po_cdc;
-po_cdc=[];
-slip=30;
+global lm_cur_1;
+global Path_analysis;
+Path_analysis =[];
+lm_cur_1 = [];
 glo_slip_x = 0;
 glo_slip_y = 0;
-dt=0.1;
 drive_cdc=[];
+ang_wp = pi/2;
+range_base=20;
+i=1;
 
-for i=1:320
-    ran_x=-50+100*rand;
+%% 障害物
+while 1
+    ran_x=-20+40*rand;
     ran_y=100*rand;
-    glo_rand_size(i)=0.3+1*rand;
+    [ang,l] = cart2pol(ran_x,ran_y);
+    glo_rand_size(i)=0.3+0.5*rand;
     glo_obs(1,i)=ran_x;
-    glo_obs(2,i)=ran_y;
+    glo_obs(2,i)=ran_y;   
+    
+    if l <= range_base && (7*pi)/36 <= ang && ang <= (29*pi)/36
+        glo_rand_size(i)=0.3+0.5*rand;
+        glo_obs(1,i)=ran_x;
+        glo_obs(2,i)=ran_y;
+        if i == 50
+            break;
+        end
+        i=i+1;
+    end    
 end
 
 [glo_gosa_obs]=gosamodel(glo_obs,p);%経路生成時のLM座標
-graph(glo_gosa_obs,p,glo_rand_size);
+gosa_plot = graph(glo_gosa_obs,p,glo_rand_size);
+
 %wpを手動で設定
 [x,y]=ginput;
 wp=[x.';
@@ -43,10 +61,7 @@ for i=1:length(wp(1,:))-1
 end
 
 hold on;
-for io=1:length(glo_obs(1,:))
-  en_plot_red(glo_obs(:,io).',glo_rand_size(io));
-  hold on;
-end
+
 for j=1:length(wp(1,:))
   plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
   hold on;
@@ -58,22 +73,28 @@ glo_start=p.start;
 
 %初期化
 i=1;
+po_cdc=[];
+slip=30;
+dt=0.1;
 count=1;
 sr=0;
 p_cdc=0;
 p_cd=0;
 p_init=0;
 p_i=0;
-ang_wp = pi/2;
 v=5;
 
 %ナビゲーション
 while 1
+   ang_wp = angular(wp(:,i),p.start);
+   start = [p.start;
+            ang_wp];
    p.start=move_rover(p.start,wp(:,i));
    l=len(wp(:,i).',p.start.');
    if count>1
      delete(b);%逐次的に処理を削除(現在のLM座標(障害物))
      delete(w);
+     delete(L);
    end
    if count==1
     [me_gosa_obs]=gosa_hozon(glo_gosa_obs);
@@ -82,7 +103,7 @@ while 1
    if  h == 3
       me_gosa_obs(3,:)=[];
    end
-   if l<1.0
+   if l<0.5
        %wpでのsaferateを計算→前原さん、宮本さん参照
        p_init(i)=potential(glo_obs,wp_init(:,i),glo_rand_size);
        p_i=sum(p_init)/i;%ポテンシャル場の平均走行前軌道
@@ -90,7 +111,27 @@ while 1
        p_cd=sum(p_cdc)/i;%走行後のパテンシャル場の平均
        if i == length(wp(1,:))
             disp("Finish");
-            break;
+            [x,y]=ginput;
+            wp_add=[x.';
+                    y.'];
+             pl_wp=[wp(:,end) wp_add];
+             plot(pl_wp(1,:),pl_wp(2,:),'-r','LineWidth',2);
+             plot(pl_wp(1,:),pl_wp(2,:),'g:o','MarkerSize',10);
+             wp = [wp wp_add];
+             wp_init = wp;
+             glo_gosa_obs(1,:) = glo_gosa_obs(1,:) +glo_slip_x;
+             glo_gosa_obs(2,:) = glo_gosa_obs(2,:) +glo_slip_y;
+             delete(gosa_plot);
+             glo_gosa_obs(3,:) = [];
+             for plt_cou = 1:length(glo_gosa_obs(1,:))
+                [x,y]=circle(glo_gosa_obs(1,plt_cou),glo_gosa_obs(2,plt_cou),glo_rand_size(plt_cou));
+                gosa_plot(plt_cou)=fill(x,y,'b');
+                hold on;
+             end
+             glo_gosa_obs(3,:) = 1;
+             start = [p.start;
+                      ang_wp];
+            
        end
        i=i+1;
    end
@@ -99,9 +140,10 @@ while 1
    [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
    [b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成  
-   [wp,k,mat_er,plan_er]=correction(up_obs,gosa_obs,p,i);
+   [wp,k,mat_er,plan_er]=correction(up_obs,gosa_obs,start,i);
+   L = lm_line(up_obs,gosa_obs);
    count=count+1;
-   pause(0.001);
+   pause(0.1);
 end
 %% 逐次的に進むローバの角度算出と走行距離の決定
 function start=move_rover(start,wp)
@@ -112,7 +154,7 @@ function start=move_rover(start,wp)
    start(1,1)=r*cos(ang)+start(1,1);
    start(2,1)=r*sin(ang)+start(2,1);
    two_point=[start bef_start];
-   plot(two_point(1,:),two_point(2,:),'-b');
+   plot(two_point(1,:),two_point(2,:),'-b','LineWidth',2);
 end
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
@@ -127,20 +169,36 @@ function po=potential(obs,move,size)
      po=po+p;
     end
 end
+
+function kill = lm_line(LM_current,LM_first)
+    LM_first(3,:) = [];
+    for i = 1:length(LM_first(1,:))
+        LM = [LM_current(:,i) LM_first(:,i)];
+        kill(i)=plot(LM(1,:),LM(2,:),'-g','LineWidth',1.5);
+        hold on;
+    end
+end
 %% 誤差モデル計算　
 %距離による関係性を考えた。
 %これはDEMのステレオデータによる誤差を主に考えた。
 function [up_obs]=gosamodel(obs,p)
  for i=1:length(obs(1,:))
+    [ang,leng] = cart2pol(obs(1,i),obs(2,i));
     r(i)=len(obs(:,i).',p.start.');
     if r(i)<1
         r(i)=0;
     end
-    l(i)=18.5*10^-2*r(i)^2*0.01;
     x_ran=-0.01+0.02*rand; %キャリブレーションや分解能での誤差を考える
     y_ran=-0.01+0.02*rand;
+    if leng >= 20
+        l=18.5*10^-2*20^2*0.01;
+        up_obs(1,i)=obs(1,i)+x_ran;
+        up_obs(2,i)=obs(2,i)+l+y_ran;
+        continue;
+    end
+    l=18.5*10^-2*r(i)^2*0.01;
     up_obs(1,i)=obs(1,i)+x_ran;
-    up_obs(2,i)=obs(2,i)+l(i)+y_ran;
+    up_obs(2,i)=obs(2,i)+l+y_ran;
 end
     up_obs(3,:)=1;
 end
@@ -150,20 +208,9 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
  global glo_slip_x;
  global glo_slip_y;
  sliprate(ang_wp,v);
- for i=1:length(obs(1,:))
-    r(i)=len(obs(:,i).',start.');
-    if r(i)<1
-        r(i)=0;
-    end
-    l(i)=18.5*10^-2*r(i)^2*0.01;
-    error=l(i);
-    error_x=cos(ang_wp)*error;
-    error_y=sin(ang_wp)*error;
-    up_obs(1,i)=error_x+obs(1,i)+glo_slip_x;
-    up_obs(2,i)=error_y+obs(2,i)+glo_slip_y;
-    
- end
-    up_obs(3,:)=1;
+up_obs(1,:)=obs(1,:)+glo_slip_x;
+up_obs(2,:)=obs(2,:)+glo_slip_y;
+up_obs(3,:)=1;
 end
 
 %% 逐次的なアニメーション
@@ -185,10 +232,11 @@ l=norm(a-b);
 end
 
 %% 軌道補正計算
-function [awp,k,mat_er,plan_er]=correction(lm_current,lm_first,p,i)
+function [awp,k,mat_er,plan_er]=correction(lm_current,lm_first,start,i)
     global wp_init;
+    global lm_cur_1;
     A=lm_current*pinv(lm_first);
-    wp(3,:)=1;
+    wp_init(3,:)=1;
     A(3,1)=0;
     A(3,2)=0;
     [h,~]=size(lm_current);
@@ -197,68 +245,58 @@ function [awp,k,mat_er,plan_er]=correction(lm_current,lm_first,p,i)
     end
     global A_n;
     if isempty(A_n)==0
-     [mat_er,plan_er] = A_matrix(A,lm_current,lm_first,A_n);
+     [mat_er,plan_er] = A_matrix(A,lm_current,lm_first,A_n,lm_cur_1);
     else
         mat_er=0;
         plan_er=0;
     end
+    lm_cur_1 = lm_current;
     A_n=A;
-   for j=i:length(wp_init(1,:))
-       wp(1,j)=wp_init(1,j);
-       wp(2,j)=wp_init(2,j);
-   end
-   for i=1:length(wp(1,:))
-      awp(:,i)=A()*wp(:,i);
-   end
-   awp(1,:)=awp(1,:);
-   awp(2,:)=awp(2,:);
-   awp(3,:)=[];
-   k=cond(A,2);
+    awp=A*wp_init;
+    awp(3,:)=[];
+    wp_init(3,:) = [];
+    k=cond(A,2);
 end
 
 %% A行列解析
 %カリタニさん参照
-%ネットに条件数とかの同じような説明ありそちらも参照可能
-function [mat_er,plan_er]=A_matrix(A,lm_c,lm_f,A_n)
-  mat_er = cond(A)*norm(A*lm_f-lm_c)/norm(A*lm_f);
-  plan_er = cond(A_n)*norm(A_n-A)/norm(A_n);
+
+function [mat_er,plan_er]=A_matrix(A,LM_current,LM_first,A_n,LM_t_1)
+    global Path_analysis;
+    mat_er = cond(A)*norm(A*LM_first-LM_current)/norm(A*LM_first);
+    plan_er = cond(A_n)*norm(A_n-A)/norm(A_n);
+    [h,~] = size(LM_t_1);
+    [~,Z_first,V_first] = svd(LM_first);
+    [~,Z_current,V_current] = svd(LM_current);
+    VTRate_spatial = sum(dot(V_current,V_first))/3;
+    CNRate_spatial = cond(Z_current)/cond(Z_first); 
+    if h == 3
+        [~,Z_t_1,~] = svd(LM_t_1);
+        %VTRate_seque = sum(dot(V_current,V_t_1))/3;
+        CNRate_seque = cond(Z_current)/cond(Z_t_1);
+        Path_analysis_vir = [mat_er,plan_er,VTRate_spatial,CNRate_spatial,CNRate_seque];
+        Path_analysis = [Path_analysis;Path_analysis_vir];
+        file = sprintf("A_matrix.mat");
+        save(file,"Path_analysis");
+        fprintf("A matrix disperation --> cond %f,%f\n",CNRate_spatial,VTRate_spatial);
+    end
 end
 
 %% センサ検知前位置のグラフを表示
-function graph(glo_gosa_obs,p,size)
+function [b] = graph(glo_gosa_obs,p,size)
+
   for i=1:length(glo_gosa_obs(1,:))
-    en_plot_blue(glo_gosa_obs(:,i).',size(i));
+    b(i) = en_plot_blue(glo_gosa_obs(:,i).',size(i));
   end
     plot(p.start(1,1),p.start(2,1),'b:.','MarkerSize',5);
     hold on;
     grid on;
     xlabel('x[m]')
     ylabel('y[m]')
-    xlim([-50 50]);
-    ylim([0 100]);
+    xlim([-15 15]);
+    ylim([0 30]);
 end
 
-%% ロボットが観測せず移動している間の軌跡のプロット
-function fx(af_start,bef_start)
-    A=[bef_start(1,1) 1;
-        af_start(1,1) 1];
-    B=[bef_start(2,1);
-        af_start(2,1)];
-    X=linsolve(A,B);
-    a=X(1,1);
-    b=X(2,1);
-    if af_start(2,1)>bef_start(2,1)
-      for y=bef_start(2,1):0.01:af_start(2,1)
-         plot((y-b)/a,y,'b:.','MarkerSize',3);
-         hold on;
-       end
-    else
-      for y=af_start(2,1):0.01:bef_start(2,1)
-         plot((y-b)/a,y,'b:.','MarkerSize',3);
-         hold on;
-       end
-    end
-end
 
 %% 経路生成時のLM座標の視野角判定
 function [rand_size,cur_gosa_obs]=sensor_judge(gosa_obs,sen_num,glo_rand_size)
@@ -277,7 +315,7 @@ end
 %% 視野角を考慮
 function [ang_wp,sen_num,sen_obs]=sensor_range(obs,start,ang)
    %視野の射程距離
-   range_base=50;
+   range_base=20;
 
    if obs(3,:)==1
        obs(3,:)=[];
@@ -301,47 +339,30 @@ end
 
 %% 視野角計算
 function   [ang,range_wpbase_max,range_wpbase_min,range_s,range_l]=siya(obs,start,ang)
- 
    range_wpbase_min=ang-(11*pi/36);
    range_wpbase_max=ang+(11*pi/36);
    range_l=sqrt((obs(1,1)-start(1,1))^2+(obs(2,1)-start(2,1))^2);
    range_x=obs(1,1)-start(1,1);
    range_y=obs(2,1)-start(2,1);
    range_s=atan2(range_y,range_x);
-   
 end
 
 function ang=angular(goal,start)
- length_x=goal(1,1)-start(1,1);
- length_r=sqrt((goal(1,1)-start(1,1))^2+(goal(2,1)-start(2,1))^2);
- ang=acos(length_x/length_r);
+ [ang,~] = cart2pol(goal(1,1)-start(1,1),goal(2,1)-start(2,1));
 end
 
 %% 二点間のプロット
 function f_twopoint(af_start,bef_start)
-  A=[bef_start(1,1) 1;
-     af_start(1,1) 1];
-  B=[bef_start(2,1);
-     af_start(2,1)];
-  X=linsolve(A,B);
-  a=X(1,1);
-  b=X(2,1);
-  y=linspace(bef_start(2,1),af_start(2,1));
-  plot((y-b)/a,y,'r:.','MarkerSize',3);
-  hold on;
+    start = [af_start bef_start];
+    plot(start(1,:),start(2,:),'-r','LineWidth',2);
+    hold on;
 end
 
 %% アニメーション　円の作成
-%下三つは円の塗りつぶし
-function en_plot_blue(glo_obs,size)
+%円の塗りつぶし
+function b=en_plot_blue(glo_obs,size)
  [x,y]=circle(glo_obs(1,1),glo_obs(1,2),size);
- fill(x,y,'b');
- hold on;
-end
-
-function a=en_plot_red(glo_obs,size)
- [x,y]=circle(glo_obs(1,1),glo_obs(1,2),size);
- a=fill(x,y,'r');
+ b=fill(x,y,'b');
  hold on;
 end
 
