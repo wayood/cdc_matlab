@@ -84,6 +84,7 @@ p_init=0;
 p_i=0;
 v=5;
 
+obs = ob_round(glo_gosa_obs,glo_rand_size);
 %ナビゲーション
 while 1
    ang_wp = angular(wp(:,i),p.start);
@@ -392,6 +393,17 @@ function [up_obs]=gosa_hozon(obs)
     up_obs(2,i)=obs(2,i)+glo_slip_y;
  end
  up_obs(3,:)=1;
+end
+%% 障害物の円を座標格納
+function obs=ob_round(cur_obs,r)
+for i=1:length(r)
+    [x,y]=circle(cur_obs(1,i),cur_obs(2,i),r(i));
+    if i==1
+        obs=[x;y];
+    else
+    obs=[obs(1,:) x;obs(2,:) y];
+    end
+end
 end
 %% スリップ率導入
 function sliprate(ang,v)
