@@ -66,6 +66,9 @@ for j=1:length(wp(1,:))
   hold on;
 end
 
+%初期経路での評価
+[po,sum_po] = initila_potential(glo_gosa_obs,wp,glo_rand_size);
+
 glo_start=p.start;
 %%  逐次補正プログラム
 %軌道補正経路 リアルタイム
@@ -125,6 +128,7 @@ while 1
        [x,y]=ginput;
        wp_add=[x.';
                 y.'];
+       [po_st,sum_po_st] = initila_potential(glo_gosa_obs,wp,glo_rand_size);
        pl_wp=[p.start wp_add GOAL];
        two = plot(pl_wp(1,:),pl_wp(2,:),'-r','LineWidth',2);
        wp_kill = plot(pl_wp(1,:),pl_wp(2,:),'g:o','MarkerSize',10);
@@ -136,6 +140,14 @@ while 1
        glo_obs_init(2,:) = glo_obs_init(2,:) +glo_slip_y;       
        glo_slip_x = 0;
        glo_slip_y = 0;
+       wp_add = [wp_add GOAL];
+       [po,~] = initila_potential(glo_gosa_obs,wp_add,glo_rand_size);
+       po = [po po_st];
+       sum_po = sum(po)/length(po);
+       fprintf("Initial Potential evaluation --> %f\n",sum_po);
+       currentFile = sprintf('./potential/potential.mat');
+       save(currentFile,'po','sum_po');
+       
        i=i-1;
        glo_gosa_obs(3,:) = [];
        obs = ob_round(glo_gosa_obs,glo_rand_size);
@@ -214,9 +226,46 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
     glo_obs(2,:) = glo_obs_init(2,:) + glo_slip_y;
     up_obs(3,:)=1;
 end
+%% スリップ率導入
+function sliprate(ang,v)
+ global dt; 
+ global glo_slip_x;
+ global glo_slip_y;
+ global slip;
+ s=rand*slip/100;
+ v_real=(1-s)*v;
+ slip_length=(v_real-v)*dt;
+ x=slip_length*cos(ang);
+ y=slip_length*sin(ang);
+ glo_slip_x =  glo_slip_x + x;
+ glo_slip_y =  glo_slip_y + y;
+end
 
+%% ポテンシャル場で初期経路を評価
+function [po,sum_po] = initila_potential(glo_gosa_obs,wp,glo_rand_size)
+    po = [];
+    for i = 1:length(wp(1,:))-1  
+        vec = wp(:,i+1) - wp(:,i);
+        [ang,~] = cart2pol(vec(1,1),vec(2,1));
+        x = linspace(wp(1,i),wp(1,i+1),100);
+        y = linspace(wp(2,i),wp(2,i+1),100);
+        for j = 1:100
+            start = [x(j)
+                     y(j)];
+            [~,sen_num,gosa_obs] = sensor_range(glo_gosa_obs,start,ang);
+            [rand_size,~] = sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
+            po_st = potential(gosa_obs,start,rand_size);
+            po = [po po_st];
+            sum_po = sum(po)/length(po);
+        end        
+    end
+    fprintf("Initial Potential evaluation --> %f\n",sum_po);
+    currentFile = sprintf('./potential/potential.mat');
+    save(currentFile,'po','sum_po');
+end
 %% 逐次的なアニメーション
 %逐次的に軌道補正を表示
+%{
 function [b,w]=animation(LM_current,LM_first,wp,i,size)
 
     for j=i:length(wp(1,:))
@@ -231,7 +280,7 @@ function [b,w]=animation(LM_current,LM_first,wp,i,size)
         b(j)=en_plot_orange(LM_current(:,j).',size(j));
     end
 end
-
+%}
 %距離を計算
 function l=len(a,b)
 l=norm(a-b);
@@ -364,10 +413,6 @@ function   [ang,range_wpbase_max,range_wpbase_min,range_s,range_l]=siya(obs,star
    range_s=atan2(range_y,range_x);
 end
 
-function ang=angular(goal,start)
- [ang,~] = cart2pol(goal(1,1)-start(1,1),goal(2,1)-start(2,1));
-end
-
 %% 二点間のプロット
 function kill = f_twopoint(af_start,bef_start)
     start = [af_start bef_start];
@@ -416,6 +461,7 @@ function [up_obs]=gosa_hozon(obs)
  end
  up_obs(3,:)=1;
 end
+
 %% 障害物の円を座標格納
 function obs=ob_round(cur_obs,r)
 for i=1:length(r)
@@ -428,20 +474,6 @@ for i=1:length(r)
 end
 end
 
-%% スリップ率導入
-function sliprate(ang,v)
- global dt; 
- global glo_slip_x;
- global glo_slip_y;
- global slip;
- s=rand*slip/100;
- v_real=(1-s)*v;
- slip_length=(v_real-v)*dt;
- x=slip_length*cos(ang);
- y=slip_length*sin(ang);
- glo_slip_x =  glo_slip_x + x;
- glo_slip_y =  glo_slip_y + y;
-end
 
 %% local plan
 function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp,ang)
@@ -520,12 +552,13 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
         %LMの変化量を図示
         L = lm_line(up_obs,gosa_obs);
 
-        %{
-        po_cdc(po_i)=potential(up_obs,start,rand_size);
-        sum_po_cdc=sum(po_cdc)/po_i;
-        po_i=po_i+1;
-        %}
-
+        %ポテンシャル遷移で評価
+        
+        po_cdc_st=potential(up_obs,start,rand_size);
+        po_cdc = [po_cdc po_cdc_st];
+        sum_po_cdc=sum(po_cdc)/length(po_cdc);
+        currentFile = sprintf('./potential/potential_cdc.mat');
+        save(currentFile,'glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
 
         if R == 0
             [wp,k,mat_er,plan_er,flag]=correction(up_obs,gosa_obs);
@@ -542,8 +575,7 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
           wp_plt(j) = plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
           hold on;
         end
-        %currentFile = sprintf('./potential/potential_cdc_err%d_%d_v%d.mat',N,GOAL,NU);
-        %save(currentFile,'glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
+
         %プロットポイントコメントアウト部分
 
 
