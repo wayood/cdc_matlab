@@ -93,46 +93,23 @@ while 1
    [wp,p.start,ang,flag,kill_obs] = DynamicWindowApproach_for_cdc(p.start.',obs.',i,wp,ang); 
    if i == length(wp(1,:))
         disp("Finish");
-        [x,y]=ginput;
-        wp_add=[x.';
-                y.'];
-         pl_wp=[wp(:,end) wp_add GOAL];
-         plot(pl_wp(1,:),pl_wp(2,:),'-r','LineWidth',2);
-         plot(pl_wp(1,:),pl_wp(2,:),'g:o','MarkerSize',10);
-         wp = [wp wp_add GOAL];
-         wp_init = wp;
-         glo_gosa_obs(1,:) = glo_gosa_obs(1,:) + glo_slip_x;
-         glo_gosa_obs(2,:) = glo_gosa_obs(2,:) + glo_slip_y;
-         glo_obs(1,:) = glo_obs(1,:) + glo_slip_x;
-         glo_obs(2,:) = glo_obs(2,:) + glo_slip_y;  
-         glo_slip_x = 0;
-         glo_slip_y = 0;
-         delete(gosa_plot);
-         glo_gosa_obs(3,:) = [];
-         obs = ob_round(glo_gosa_obs,glo_rand_size);
-         for plt_cou = 1:length(glo_gosa_obs(1,:))
-            [x,y]=circle(glo_gosa_obs(1,plt_cou),glo_gosa_obs(2,plt_cou),glo_rand_size(plt_cou));
-            gosa_plot(plt_cou)=fill(x,y,'b');
-            hold on;
-         end
-         glo_gosa_obs(3,:) = 1;
-
+        break;
    end
    
    if flag == 1
        disp("Please add waypoint !!");
-       delete(two);
-       delete(two_init);
-       delete(wp_kill);
        delete(gosa_plot);
        [x,y]=ginput;
        wp_add=[x.';
                 y.'];
+       delete(two);
+       delete(two_init);
+       delete(wp_kill);
        % [po_st,sum_po_st] = initila_potential(glo_gosa_obs,wp,glo_rand_size);
-       pl_wp=[p.start wp_add GOAL];
+       pl_wp=[p.start wp_add wp(:,i:end)];
        two = plot(pl_wp(1,:),pl_wp(2,:),'-r','LineWidth',2);
        wp_kill = plot(pl_wp(1,:),pl_wp(2,:),'g:o','MarkerSize',10);
-       wp = [wp(:,1:i-1) wp_add GOAL];
+       wp = [wp(:,1:i-1) wp_add wp(:,i:end)];
        wp_init = wp;
        glo_gosa_obs(1,:) = glo_gosa_obs(1,:) +glo_slip_x;
        glo_gosa_obs(2,:) = glo_gosa_obs(2,:) +glo_slip_y;
@@ -591,7 +568,18 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
         for j=1:length(up_obs(1,:))
             b(j)=en_plot_orange(up_obs(:,j).',rand_size(j));
         end
-
+        
+        if rand_n == 9
+            disp('Add !!');
+            flag = 1;
+            ang = x(3);
+            %プロットポイントコメントアウト部分
+            delete(wp_plt);
+            delete(L);
+            delete(r);       
+            break;
+        end
+        
         %ゴール判定
         if norm(x(1:2)-goal')<Goal_tor
             disp('Arrive Goal!!');
