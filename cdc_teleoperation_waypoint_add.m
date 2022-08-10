@@ -32,18 +32,18 @@ while 1
     ran_y=100*rand;
     [ang,l] = cart2pol(ran_x,ran_y);   
     
-    if l <= range_base && (7*pi)/36 <= ang && ang <= (29*pi)/36
+    if l <= range_base && 0 <= ang && ang <= pi
         glo_rand_size(i)=0.3+0.5*rand;
         glo_obs(1,i)=ran_x;
         glo_obs(2,i)=ran_y;
-        if i == 50
+        if i == 75
             break;
         end
         i=i+1;
     end    
 end
 
-[glo_gosa_obs]=gosamodel(glo_obs,p.start);%経路生成時のLM座標
+[glo_gosa_obs]=gosamodel(glo_obs,p.start,ang_wp);%経路生成時のLM座標
 gosa_plot = graph(glo_gosa_obs,p,glo_rand_size);
 plot(GOAL(1,1),GOAL(2,1),'g:o','MarkerSize',10);
 hold on;
@@ -112,7 +112,7 @@ while 1
        delete(two_init);
        delete(wp_kill);
        % [po_st,sum_po_st] = initila_potential(glo_gosa_obs,wp,glo_rand_size);
-       pl_wp=[p.start wp_add wp(:,i:end)];
+       pl_wp=[p.start wp_add wp_init(:,i:end)];
        two = plot(pl_wp(1,:),pl_wp(2,:),'-r','LineWidth',2);
        wp_kill = plot(pl_wp(1,:),pl_wp(2,:),'g:o','MarkerSize',10);
        wp = [wp_init(:,1:i-1) wp_add wp_init(:,i:end)];
@@ -184,7 +184,7 @@ end
 %% 誤差モデル計算　
 %距離による関係性を考えた。
 %これはDEMのステレオデータによる誤差を主に考えた。
-function [up_obs]=gosamodel(obs,start)
+function [up_obs]=gosamodel(obs,start,ang)
  for i=1:length(obs(1,:))
     [~,leng] = cart2pol(obs(1,i),obs(2,i));
     r(i)=len(obs(:,i).',start.');
@@ -195,13 +195,15 @@ function [up_obs]=gosamodel(obs,start)
     y_ran=-0.01+0.02*rand;
     if leng >= 20
         l=18.5*10^-2*20^2*0.01;
-        up_obs(1,i)=obs(1,i)+x_ran;
-        up_obs(2,i)=obs(2,i)+l+y_ran;
+        [x_error,y_error] = pol2cart(ang,l);
+        up_obs(1,i)=obs(1,i)+x_error+x_ran;
+        up_obs(2,i)=obs(2,i)+y_error+y_ran;
         continue;
     end
     l=18.5*10^-2*r(i)^2*0.01;
-    up_obs(1,i)=obs(1,i)+x_ran;
-    up_obs(2,i)=obs(2,i)+l+y_ran;
+    [x_error,y_error] = pol2cart(ang,l);
+    up_obs(1,i)=obs(1,i)+x_error+x_ran;
+    up_obs(2,i)=obs(2,i)+y_error+y_ran;
 end
     up_obs(3,:)=1;
 end
@@ -312,7 +314,6 @@ function [wp_new,k,mat_er,plan_er,flag]=correction(lm_current,lm_first,wp_add_ar
     lm_cur_1 = lm_current;
     A_n=A;
     wp_new=A*wp_init;
-    
     wp_init(3,:) = [];
     if wp_add_array(1).count  ~= 0
         for add_count = 1:length(wp_add_array)
@@ -355,7 +356,7 @@ function [mat_er,plan_er,flag]=A_matrix(A,LM_current,LM_first,A_n,LM_t_1)
         Path_analysis = [Path_analysis;Path_analysis_vir];
         file = sprintf("A_matrix.mat");
         save(file,"Path_analysis");
-        fprintf("A matrix disperation --> cond %f,%f\n",CNRate_spatial,VTRate_spatial(1,2));
+        %fprintf("A matrix disperation --> cond %f,%f\n",CNRate_spatial,VTRate_spatial(1,2));
     end
 end
 
@@ -565,7 +566,7 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
         [~,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
         glo_obs(3,:) = [];
         glo_range_obs(3,:) = [];
-        [up_obs]=gosamodel(glo_range_obs,start);
+        [up_obs]=gosamodel(glo_range_obs,start,ang_wp);
         up_obs(3,:) = [];
         
         for obs_i = 1:length(glo_obs(1,:))
