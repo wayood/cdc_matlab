@@ -8,4 +8,5 @@ mkdir('potential');
 addpath('potential');
 mkdir('wp');
 addpath('wp');
+addpath('include');
 

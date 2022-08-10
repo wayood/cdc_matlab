@@ -104,7 +104,7 @@ while 1
 
    i=i+1;
    %プロットポイントコメントアウト部分
-%    [b,w]=animation(up_obs,wp,p,i,rand_size);
+   %[b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成
    if length(wp(1,:))==i-1
        disp("Finish");
