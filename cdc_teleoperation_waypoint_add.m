@@ -32,7 +32,7 @@ while 1
     ran_y=100*rand;
     [ang,l] = cart2pol(ran_x,ran_y);   
     
-    if l <= range_base && 0 <= ang && ang <= pi
+    if l <= range_base + 10 && 0 <= ang && ang <= pi
         glo_rand_size(i)=0.3+0.5*rand;
         glo_obs(1,i)=ran_x;
         glo_obs(2,i)=ran_y;
@@ -368,7 +368,7 @@ function [b] = graph(glo_gosa_obs,p,size)
     grid on;
     xlabel('x[m]')
     ylabel('y[m]')
-    xlim([-15 15]);
+    xlim([-20 20]);
     ylim([0 30]);
 end
 
@@ -395,15 +395,26 @@ function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
    if obs(3,:)==1
        obs(3,:)=[];
    end
-   
-   range_min = ang-(11*pi/36);
-   range_max = ang+(11*pi/36);
-   if abs(range_min) > pi && ang < 0
+   if ang > pi
+       ang_pol = ang - 2*pi;
+   elseif ang > 2*pi
+       r = rem(ang,2*pi);
+       if r > pi
+           ang_pol = r - 2*pi;
+       else
+           ang_pol = r;
+       end
+   else
+       ang_pol = ang;
+   end
+   range_min = ang_pol-(11*pi/36);
+   range_max = ang_pol+(11*pi/36);
+   if abs(range_min) > pi && ang_pol < 0
        range_plus_min = 2*pi - abs(range_min);
        range_plus_max = pi;
        range_minus_max = range_max;
        range_minus_min = -pi;    
-   elseif range_max > pi && ang > 0
+   elseif range_max > pi && ang_pol > 0
        range_plus_min = range_min;
        range_plus_max = pi;
        range_minus_max = range_max - 2*pi;
@@ -411,8 +422,8 @@ function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
    else
        range_plus_min = range_min;
        range_plus_max = range_max;
-       range_minus_max = 0;
-       range_minus_min = 0;
+       range_minus_max = -2;
+       range_minus_min = -1;
    end
    
    for i=1:length(obs(1,:))
@@ -507,7 +518,7 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
     global po_cdc;
     global flag_add;
     Hz = 2;
-    Goal_tor=0.2;
+    Goal_tor = 0.4;
     flag = 0;
     
     %ロボットの力学モデル
@@ -516,7 +527,7 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
     Kinematic=[1.0,toRadian(20.0),0.2,toRadian(50.0),0.01,toRadian(1)];
 
     %評価関数のパラメータ [heading,dist,velocity,predictDT]
-    evalParam=[0.3,0.3,0.1,2.0];
+    evalParam=[0.5,0.5,0.2,2.0];
 
     %シミュレーション結果
     result.x=[];
@@ -666,6 +677,8 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
             disp('Skip Waypoint');
             %プロットポイントコメントアウト部分
                delete(b);
+               delete(L);
+               delete(r);
             break;
         end
 
@@ -745,11 +758,13 @@ for vt=Vr(1):model(5):Vr(2)
         else
             dist=CalcDistEval(xt,ob,R);
         end
+        
         vel=abs(vt);
         evalDB=[evalDB;[vt ot heading dist vel]];
         trajDB=[trajDB;traj];     
     end
 end
+
 end
 
 function EvalDB=NormalizeEval(EvalDB)
@@ -802,17 +817,26 @@ end
 
 function heading=CalcHeadingEval(x,goal)
 %headingの評価関数を計算する関数
-
-theta=toDegree(x(3));%ロボットの方位
-goalTheta=toDegree(atan2(goal(2)-x(2),goal(1)-x(1)));%ゴールの方位
-
-if goalTheta>theta
-    targetTheta=goalTheta-theta;%ゴールまでの方位差分[deg]
+if x(3) > 2*pi
+       ang = rem(x(3),2*pi);
 else
-    targetTheta=theta-goalTheta;%ゴールまでの方位差分[deg]
+    ang = x(3);
 end
+theta=toDegree(ang);%ロボットの方位
+goalrad = atan2(goal(2)-x(2),goal(1)-x(1));
+if goalrad < 0
+    goalRad = 2*pi + goalrad;
+else
+    goalRad = goalrad;
+end
+goalTheta=toDegree(goalRad);%ゴールの方位
 
-heading=180-targetTheta;
+if goalTheta > 270 && theta + 360 - goalTheta < 180 ||  theta > 270 && goalTheta + 360 - theta < 90
+    targetTheta = abs(theta + 360 - goalTheta);    
+else
+    targetTheta = abs(theta - goalTheta);    
+end
+heading=360-targetTheta;
 end
 
 function Vr=CalcDynamicWindow(x,model)
