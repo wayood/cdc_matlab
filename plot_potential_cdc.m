@@ -2,14 +2,16 @@
 numFiles = 10;
 NumFiles = 15;
 GOAL = 110;
+%{
 for N=1:numFiles
 for NU=1:NumFiles   
 try
-currentfile=sprintf('./potential/potential_err-%d_110_v%d.mat',N,NU);
+%}
+currentfile=sprintf('./potential/potential.mat');
 load(currentfile);%軌道補正なし
-currentfile=sprintf('./potential/potential_cdc_%d_%d_v%d.mat',N,GOAL,NU);
+currentfile=sprintf('./potential/potential_cdc.mat');
 load(currentfile);%軌道補正込み
-currentfile=sprintf('./potential/potential_cruise_%d_%d.mat',N,GOAL);
+currentfile=sprintf('./potential/potential.mat');
 load(currentfile);%指示軌道ポテンシャル場
 
 x=100;
@@ -26,14 +28,16 @@ hold on;
 %% 三次元的にポテンシャル場で評価
 %ここでは真の障害物に対しての安定性を補正ありなしで判別
 
+%{
 for i=1:length(drive(1,:))
     z(i)=potential(glo_obs,drive(:,i),glo_rand_size);
-    %{
+    
     plot3(drive(1,i)+51,drive(2,i),z(i),'o','Color','b');
     hold on;
-    %}
+    
 end
 s1=sum(z)/i;
+%}
 
 for j=1:length(drive_cdc(1,:))
     z_cdc(j)=potential(glo_obs,drive_cdc(:,j),glo_rand_size);
@@ -46,7 +50,9 @@ s2=sum(z_cdc)/j;
 
 
 %% 補正によるSafeRateを表現
-po_cruise_st=po_cruise;
+po_cruise_st=po;
+po_cruise=po;
+sum_po_cruise = sum_po;
 po_cdc_st=po_cdc;
 po_st=po;
 
@@ -120,13 +126,15 @@ grid on;
 xlabel('x[m]');
 ylabel('potential');
 %}
-currentfile = sprintf('./potential/potential_evaluation_err-%d_%d_v%d',N,GOAL,NU);
-save(currentfile,"sr","sr_cdc","s1","s2");
-catch ME
-    continue;
-end
-end
-end
+currentfile = sprintf('./potential/potential_evaluation.mat');
+save(currentfile,"sr","sr_cdc");
+writematrix(sr_cdc,"safe_rate_ver_add.xls","WriteMode","append");
+fprintf("safe rate ver.compesation => %f\n",sr_cdc);
+% catch ME
+%     continue;
+% end
+% end
+% end
 %% 関数系
 
 %ポテンシャル場の生成

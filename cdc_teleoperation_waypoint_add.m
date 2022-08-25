@@ -32,7 +32,7 @@ while 1
     ran_y=100*rand;
     [ang,l] = cart2pol(ran_x,ran_y);   
     
-    if l <= range_base && 0 <= ang && ang <= pi
+    if l <= range_base + 10 && 0 <= ang && ang <= pi
         glo_rand_size(i)=0.3+0.5*rand;
         glo_obs(1,i)=ran_x;
         glo_obs(2,i)=ran_y;
@@ -78,7 +78,7 @@ glo_start=p.start;
 %初期化
 i=1;
 po_cdc=[];
-slip=50;
+slip=30;
 dt=0.1;
 count=1;
 sr=0;
@@ -116,29 +116,25 @@ while 1
        two = plot(pl_wp(1,:),pl_wp(2,:),'-r','LineWidth',2);
        wp_kill = plot(pl_wp(1,:),pl_wp(2,:),'g:o','MarkerSize',10);
        wp = [wp_init(:,1:i-1) wp_add wp_init(:,i:end)];
-       wp_init = wp;
+       
        wp_add_array(wp_add_count).wp = wp_add;
        wp_add_array(wp_add_count).count = i;
        lm_add_array(1,:) = glo_gosa_obs(1,:) +glo_slip_x;
        lm_add_array(2,:) = glo_gosa_obs(2,:) +glo_slip_y;
        lm_add_array(3,:) = 1;
        wp_add_array(wp_add_count).lm_add = lm_add_array;
-       wp_add_count = wp_add_count + 1;
-       %{
-       glo_gosa_obs(1,:) = glo_gosa_obs(1,:) +glo_slip_x;
-       glo_gosa_obs(2,:) = glo_gosa_obs(2,:) +glo_slip_y;
-       glo_obs_init(1,:) = glo_obs_init(1,:) +glo_slip_x;
-       glo_obs_init(2,:) = glo_obs_init(2,:) +glo_slip_y;       
-       glo_slip_x = 0;
-       glo_slip_y = 0;
-       wp_add = [wp_add GOAL];
-       [po,~] = initial_potential(glo_gosa_obs,wp_add,glo_rand_size);
-       po = [po po_st];
-       sum_po = sum(po)/length(po);
-       fprintf("Initial Potential evaluation --> %f\n",sum_po);
+       
+       Potential_WP_init = [p.start wp_init(:,1:i-1)];
+       [po_init,sum_po_init] = initial_potential(glo_gosa_obs,Potential_WP_init,glo_rand_size);
+       Potential_WP_add = [wp_init(:,i-1) wp_add wp_init(:,i)];
+       [po_add,sum_po_add] = initial_potential(wp_add_array(wp_add_count).lm_add,Potential_WP_add,glo_rand_size);
+       Potential_WP_init_sand =  wp_init(:,i:end);
+       [po_init_sand,sum_po_init_sand] = initial_potential(glo_gosa_obs,Potential_WP_init_sand,glo_rand_size);
+       po = [po_init po_add po_init_sand];
+       sum_po = sum(po) / length(po);
        currentFile = sprintf('./potential/potential.mat');
        save(currentFile,'po','sum_po');
-       %}
+       
        i=i-1;
        glo_gosa_obs(3,:) = [];
        obs = ob_round(glo_gosa_obs,glo_rand_size);
@@ -147,16 +143,17 @@ while 1
      
        for plt_cou = 1:length(glo_gosa_obs(1,:))
           [x,y]=circle(glo_gosa_obs(1,plt_cou),glo_gosa_obs(2,plt_cou),glo_rand_size(plt_cou));
-          gosa_plot(plt_cou)=fill(x,y,'b');
+          gosa_plot(plt_cou)=fill(x,y,'b','FaceAlpha',.3,'EdgeAlpha',.3);
           hold on;
        end
        
-       
+       wp_add_count = wp_add_count + 1;
        glo_gosa_obs(3,:) = 1;
+       wp_init = wp;
    end
    i=i+1;
    count=count+1;
-   pause(0.001);
+   
 end
 
 %% ポテンシャル場で評価
@@ -371,7 +368,7 @@ function [b] = graph(glo_gosa_obs,p,size)
     grid on;
     xlabel('x[m]')
     ylabel('y[m]')
-    xlim([-15 15]);
+    xlim([-20 20]);
     ylim([0 30]);
 end
 
@@ -398,13 +395,42 @@ function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
    if obs(3,:)==1
        obs(3,:)=[];
    end
-   
-   range_min = ang-(11*pi/36);
-   range_max = ang+(11*pi/36);
+   if ang > pi
+       ang_pol = ang - 2*pi;
+   elseif ang > 2*pi
+       r = rem(ang,2*pi);
+       if r > pi
+           ang_pol = r - 2*pi;
+       else
+           ang_pol = r;
+       end
+   else
+       ang_pol = ang;
+   end
+   range_min = ang_pol-(11*pi/36);
+   range_max = ang_pol+(11*pi/36);
+   if abs(range_min) > pi && ang_pol < 0
+       range_plus_min = 2*pi - abs(range_min);
+       range_plus_max = pi;
+       range_minus_max = range_max;
+       range_minus_min = -pi;    
+   elseif range_max > pi && ang_pol > 0
+       range_plus_min = range_min;
+       range_plus_max = pi;
+       range_minus_max = range_max - 2*pi;
+       range_minus_min = -pi;
+   else
+       range_plus_min = range_min;
+       range_plus_max = range_max;
+       range_minus_max = -2;
+       range_minus_min = -1;
+   end
    
    for i=1:length(obs(1,:))
         [ang_obs,range_length] = cart2pol(obs(1,i)-start(1,1),obs(2,i)-start(2,1)); 
-        if ang_obs>range_min && ang_obs<range_max && range_length<range_base
+        if ang_obs>range_plus_min && ang_obs<range_plus_max && range_length<range_base
+            sen_num(i)=0;
+        elseif ang_obs>range_minus_min && ang_obs<range_minus_max && range_length<range_base
             sen_num(i)=0;
         else
             obs(:,i)=[-1;-1];
@@ -413,16 +439,6 @@ function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
    end
       idx = obs(1,:)== -1 & obs(2,:) == -1;
       sen_obs = obs(:,~idx);
-end
-
-%% 視野角計算
-function   [ang,range_wpbase_max,range_wpbase_min,range_s,range_l]=siya(obs,start,ang)
-   range_wpbase_min=ang-(11*pi/36);
-   range_wpbase_max=ang+(11*pi/36);
-   range_l=sqrt((obs(1,1)-start(1,1))^2+(obs(2,1)-start(2,1))^2);
-   range_x=obs(1,1)-start(1,1);
-   range_y=obs(2,1)-start(2,1);
-   range_s=atan2(range_y,range_x);
 end
 
 %% 二点間のプロット
@@ -436,7 +452,7 @@ end
 %円の塗りつぶし
 function b=en_plot_blue(glo_obs,size)
  [x,y]=circle(glo_obs(1,1),glo_obs(1,2),size);
- b=fill(x,y,'b');
+ b=fill(x,y,'b','FaceAlpha',.3,'EdgeAlpha',.3);
  hold on;
 end
 
@@ -502,7 +518,7 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
     global po_cdc;
     global flag_add;
     Hz = 2;
-    Goal_tor=0.2;
+    Goal_tor = 0.4;
     flag = 0;
     
     %ロボットの力学モデル
@@ -511,13 +527,14 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
     Kinematic=[1.0,toRadian(20.0),0.2,toRadian(50.0),0.01,toRadian(1)];
 
     %評価関数のパラメータ [heading,dist,velocity,predictDT]
-    evalParam=[0.1,0.2,0.1,3.0];
+    evalParam=[0.5,0.5,0.2,2.0];
 
     %シミュレーション結果
     result.x=[];
 
     % Main loop
     for i=1:5000
+        
         rand_n = randi(100);
         if flag_add == 1
             rand_n = 100;
@@ -660,6 +677,8 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
             disp('Skip Waypoint');
             %プロットポイントコメントアウト部分
                delete(b);
+               delete(L);
+               delete(r);
             break;
         end
 
@@ -739,11 +758,13 @@ for vt=Vr(1):model(5):Vr(2)
         else
             dist=CalcDistEval(xt,ob,R);
         end
+        
         vel=abs(vt);
         evalDB=[evalDB;[vt ot heading dist vel]];
         trajDB=[trajDB;traj];     
     end
 end
+
 end
 
 function EvalDB=NormalizeEval(EvalDB)
@@ -796,17 +817,26 @@ end
 
 function heading=CalcHeadingEval(x,goal)
 %headingの評価関数を計算する関数
-
-theta=toDegree(x(3));%ロボットの方位
-goalTheta=toDegree(atan2(goal(2)-x(2),goal(1)-x(1)));%ゴールの方位
-
-if goalTheta>theta
-    targetTheta=goalTheta-theta;%ゴールまでの方位差分[deg]
+if x(3) > 2*pi
+       ang = rem(x(3),2*pi);
 else
-    targetTheta=theta-goalTheta;%ゴールまでの方位差分[deg]
+    ang = x(3);
 end
+theta=toDegree(ang);%ロボットの方位
+goalrad = atan2(goal(2)-x(2),goal(1)-x(1));
+if goalrad < 0
+    goalRad = 2*pi + goalrad;
+else
+    goalRad = goalrad;
+end
+goalTheta=toDegree(goalRad);%ゴールの方位
 
-heading=180-targetTheta;
+if goalTheta > 270 && theta + 360 - goalTheta < 180 ||  theta > 270 && goalTheta + 360 - theta < 90
+    targetTheta = abs(theta + 360 - goalTheta);    
+else
+    targetTheta = abs(theta - goalTheta);    
+end
+heading=360-targetTheta;
 end
 
 function Vr=CalcDynamicWindow(x,model)
@@ -833,9 +863,9 @@ F = [1 0 0 0 0
      0 0 1 0 0
      0 0 0 0 0
      0 0 0 0 0];
- 
-B = [dt*cos(x(3)) 0
-    dt*sin(x(3)) 0
+ [X,Y] = pol2cart(x(3),dt); 
+B = [X 0
+    Y 0
     0 dt
     1 0
     0 1];
