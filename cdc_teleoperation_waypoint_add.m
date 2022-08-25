@@ -153,7 +153,7 @@ while 1
    end
    i=i+1;
    count=count+1;
-   pause(0.001);
+   
 end
 
 %% ポテンシャル場で評価
