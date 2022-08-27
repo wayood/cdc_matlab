@@ -104,6 +104,7 @@ while 1
    end
    if flag == 1
        disp("Please add waypoint !!");
+       
        delete(gosa_plot);
        [x,y]=ginput;
        wp_add=[x.';
@@ -111,31 +112,36 @@ while 1
        delete(two);
        delete(two_init);
        delete(wp_kill);
+       wp_detour = delaunary_hamilton_detour_finding(wp_add,p.start,i);
+       num_bond = add_wp_decide(wp_add);
        % [po_st,sum_po_st] = initila_potential(glo_gosa_obs,wp,glo_rand_size);
-       pl_wp=[p.start wp_add wp_init(:,i:end)];
-       two = plot(pl_wp(1,:),pl_wp(2,:),'-r','LineWidth',2);
+       pl_wp=[wp_init(:,1:num_bond) wp_add wp_init(:,num_bond + 1:end)];
+       two = plot(wp_detour(1,:),wp_detour(2,:),'-r','LineWidth',2);
        wp_kill = plot(pl_wp(1,:),pl_wp(2,:),'g:o','MarkerSize',10);
-       wp = [wp_init(:,1:i-1) wp_add wp_init(:,i:end)];
+       wp_detour = wp_detour(:,2:end);
+       wp = [wp_init(:,1:i-1) wp_detour];
        
        wp_add_array(wp_add_count).wp = wp_add;
        wp_add_array(wp_add_count).count = i;
-       lm_add_array(1,:) = glo_gosa_obs(1,:) +glo_slip_x;
-       lm_add_array(2,:) = glo_gosa_obs(2,:) +glo_slip_y;
+       lm_add_array(1,:) = glo_gosa_obs(1,:) + glo_slip_x;
+       lm_add_array(2,:) = glo_gosa_obs(2,:) + glo_slip_y;
        lm_add_array(3,:) = 1;
        wp_add_array(wp_add_count).lm_add = lm_add_array;
        
-       Potential_WP_init = [p.start wp_init(:,1:i-1)];
+       %{
+       Potential_WP_init = [p.start wp_init(:,1:count-1)];
        [po_init,sum_po_init] = initial_potential(glo_gosa_obs,Potential_WP_init,glo_rand_size);
-       Potential_WP_add = [wp_init(:,i-1) wp_add wp_init(:,i)];
+       Potential_WP_add = [wp_init(:,num_bond-1) wp_add wp_init(:,num_bond)];
        [po_add,sum_po_add] = initial_potential(wp_add_array(wp_add_count).lm_add,Potential_WP_add,glo_rand_size);
-       Potential_WP_init_sand =  wp_init(:,i:end);
+       Potential_WP_init_sand =  wp_init(:,num_bond:end);
        [po_init_sand,sum_po_init_sand] = initial_potential(glo_gosa_obs,Potential_WP_init_sand,glo_rand_size);
        po = [po_init po_add po_init_sand];
        sum_po = sum(po) / length(po);
        currentFile = sprintf('./potential/potential.mat');
        save(currentFile,'po','sum_po');
+       %}
        
-       i=i-1;
+       i = i-1;
        glo_gosa_obs(3,:) = [];
        obs = ob_round(glo_gosa_obs,glo_rand_size);
 
@@ -150,12 +156,51 @@ while 1
        wp_add_count = wp_add_count + 1;
        glo_gosa_obs(3,:) = 1;
        wp_init = wp;
+       
    end
    i=i+1;
    count=count+1;
-   pause(0.001);
 end
 
+function wp_detour = delaunary_hamilton_detour_finding(wp_add,start,count)
+    global wp_init;
+    Goal = length(wp_init(1,count:end)) + 1;
+    Start = 1;
+    
+    x = [start(1,1) wp_init(1,count:end) wp_add(1,:)];
+    y = [start(2,1) wp_init(2,count:end) wp_add(2,:)];
+    DT = delaunay(x,y);
+    triplot(DT,x,y);
+    hold on;
+    Graph_existance_check = zeros(length(x),length(x));
+
+    for i = 1:length(DT(:,1))
+        Graph_existance_check(DT(i,1),DT(i,2)) = 1;
+        Graph_existance_check(DT(i,2),DT(i,1)) = 1;
+        Graph_existance_check(DT(i,2),DT(i,3)) = 1;
+        Graph_existance_check(DT(i,3),DT(i,2)) = 1;
+        Graph_existance_check(DT(i,1),DT(i,3)) = 1;
+        Graph_existance_check(DT(i,3),DT(i,1)) = 1;
+    end
+
+    P = Hamilton(Graph_existance_check,Start,Goal);
+    for i = 1:length(P)
+        x_detour(i) = x(P(i));
+        y_detour(i) = y(P(i));
+    end
+    
+    wp_detour = [x_detour
+                 y_detour];
+end
+
+function num_bond = add_wp_decide(wp_add)
+    global wp_init
+    for i=1:length(wp_init(1,:))
+        l(i) = norm(wp_init(:,i).' - wp_add(:,1).');
+    end
+    [min_l,num] =min(l);
+    num_bond = num(1);  
+end
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
     po=0;
@@ -312,6 +357,7 @@ function [wp_new,k,mat_er,plan_er,flag]=correction(lm_current,lm_first,wp_add_ar
     A_n=A;
     wp_new=A*wp_init;
     wp_init(3,:) = [];
+    %{
     if wp_add_array(1).count  ~= 0
         for add_count = 1:length(wp_add_array)
             A_add = lm_current*pinv(wp_add_array(add_count).lm_add_range);
@@ -321,6 +367,7 @@ function [wp_new,k,mat_er,plan_er,flag]=correction(lm_current,lm_first,wp_add_ar
             wp_new(2,wp_add_array(add_count).count:length(wp_new_add(add_count).wp(1,:))+wp_add_array(add_count).count-1) = wp_new_add(add_count).wp(2,:);
         end
     end
+    %}
     wp_new(3,:)=[];
     k=cond(A,2);
 end
@@ -521,6 +568,7 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
     Goal_tor = 0.4;
     flag = 0;
     
+    
     %ロボットの力学モデル
     %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
     % 速度解像度[m/s],回頭速度解像度[rad/s]]
@@ -535,7 +583,7 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
     % Main loop
     for i=1:5000
         
-        rand_n = randi(100);
+        rand_n = randi(10);
         if flag_add == 1
             rand_n = 100;
         end
