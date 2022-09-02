@@ -357,6 +357,7 @@ function [wp_new,k,mat_er,plan_er,flag]=correction(lm_current,lm_first,wp_add_ar
     A_n=A;
     wp_new=A*wp_init;
     wp_init(3,:) = [];
+    
     %{
     if wp_add_array(1).count  ~= 0
         for add_count = 1:length(wp_add_array)
