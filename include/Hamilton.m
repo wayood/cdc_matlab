@@ -35,7 +35,7 @@
 %{
     Main Function
 %}
-function hamPath = Test_hamilton(Graph, Source, Destination)
+function hamPath = Hamilton(Graph, Source, Destination)
 
 % Input Checking
 if ~isreal(Graph)
@@ -55,6 +55,23 @@ if ~(isreal(Source)||isreal(Destination)||(Source>0 && Source<=r) || (Destinatio
     error('improper Source/Destination');
 end
 
+deg = 0;
+for i = 1:length(Graph(1,:))
+    
+    if Graph(Source,i) == 1
+        deg = deg + 1;
+    end
+    if Graph(Destination,i) == 1
+        deg = deg + 1;
+    end 
+    
+end
+N = length(Graph(1,:));
+if deg < N
+    fprintf("probablly not Hamilton Graph\n");
+else
+    fprintf("This is Hamilton Graph\n");
+end
 clear c;
 
 % Function call
