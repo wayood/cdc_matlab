@@ -32,7 +32,7 @@ while 1
     ran_y=100*rand;
     [ang,l] = cart2pol(ran_x,ran_y);   
     
-    if l <= range_base + 10 && 0 <= ang && ang <= pi
+    if l <= range_base + 10 && (7*pi)/36 <= ang && ang <= (29*pi)/36
         glo_rand_size(i)=0.3+0.5*rand;
         glo_obs(1,i)=ran_x;
         glo_obs(2,i)=ran_y;
@@ -44,7 +44,7 @@ while 1
 end
 
 [glo_gosa_obs]=gosamodel(glo_obs,p.start,ang_wp);%経路生成時のLM座標
-gosa_plot = graph(glo_gosa_obs,p,glo_rand_size);
+gosa_plot = graph_first(glo_gosa_obs,p,glo_rand_size);
 plot(GOAL(1,1),GOAL(2,1),'g:o','MarkerSize',10);
 hold on;
 
@@ -97,7 +97,7 @@ wp_add_array(1).lm_add = [];
 wp_add_array(1).lm_add_range = [];
 %ナビゲーション
 while 1
-   [wp,p.start,ang,flag,kill_obs] = DynamicWindowApproach_for_cdc(p.start.',obs.',i,wp,ang,wp_add_array); 
+   [wp,p.start,ang,flag,kill_obs,current_obs] = DynamicWindowApproach_for_cdc(p.start.',obs.',i,wp,ang,wp_add_array); 
    if i == length(wp(1,:))
         disp("Finish");
         break;
@@ -106,22 +106,18 @@ while 1
        disp("Please add waypoint !!");
        
        delete(gosa_plot);
-       [x,y]=ginput;
-       wp_add=[x.';
-                y.'];
        delete(two);
        delete(two_init);
        delete(wp_kill);
-       wp_detour = delaunary_hamilton_detour_finding(wp_add,p.start,i);
-       num_bond = add_wp_decide(wp_add);
+       [wp_replan] = voronoi_waypoint_generation(p.start,wp(:,i),current_obs);
        % [po_st,sum_po_st] = initila_potential(glo_gosa_obs,wp,glo_rand_size);
-       pl_wp=[wp_init(:,1:num_bond) wp_add wp_init(:,num_bond + 1:end)];
-       two = plot(wp_detour(1,:),wp_detour(2,:),'-r','LineWidth',2);
+       pl_wp=[wp_init(:,1:i-1) wp_replan wp_init(:,i+2:end)];
+       two = plot([wp_replan(1,:) wp_init(1,i+2:end)],[wp_replan(2,:) wp_init(2,i+2:end)],'-r','LineWidth',2);
        wp_kill = plot(pl_wp(1,:),pl_wp(2,:),'g:o','MarkerSize',10);
-       wp_detour = wp_detour(:,2:end);
-       wp = [wp_init(:,1:i-1) wp_detour];
+       wp_replan = wp_replan(:,2:end);
+       wp = [wp_init(:,1:i-1) wp_replan wp_init(:,i+2:end)];
        
-       wp_add_array(wp_add_count).wp = wp_add;
+       wp_add_array(wp_add_count).wp = wp_replan;
        wp_add_array(wp_add_count).count = i;
        lm_add_array(1,:) = glo_gosa_obs(1,:) + glo_slip_x;
        lm_add_array(2,:) = glo_gosa_obs(2,:) + glo_slip_y;
@@ -162,45 +158,6 @@ while 1
    count=count+1;
 end
 
-function wp_detour = delaunary_hamilton_detour_finding(wp_add,start,count)
-    global wp_init;
-    Goal = length(wp_init(1,count:end)) + 1;
-    Start = 1;
-    
-    x = [start(1,1) wp_init(1,count:end) wp_add(1,:)];
-    y = [start(2,1) wp_init(2,count:end) wp_add(2,:)];
-    DT = delaunay(x,y);
-    triplot(DT,x,y);
-    hold on;
-    Graph_existance_check = zeros(length(x),length(x));
-
-    for i = 1:length(DT(:,1))
-        Graph_existance_check(DT(i,1),DT(i,2)) = 1;
-        Graph_existance_check(DT(i,2),DT(i,1)) = 1;
-        Graph_existance_check(DT(i,2),DT(i,3)) = 1;
-        Graph_existance_check(DT(i,3),DT(i,2)) = 1;
-        Graph_existance_check(DT(i,1),DT(i,3)) = 1;
-        Graph_existance_check(DT(i,3),DT(i,1)) = 1;
-    end
-
-    P = Hamilton(Graph_existance_check,Start,Goal);
-    for i = 1:length(P)
-        x_detour(i) = x(P(i));
-        y_detour(i) = y(P(i));
-    end
-    
-    wp_detour = [x_detour
-                 y_detour];
-end
-
-function num_bond = add_wp_decide(wp_add)
-    global wp_init
-    for i=1:length(wp_init(1,:))
-        l(i) = norm(wp_init(:,i).' - wp_add(:,1).');
-    end
-    [min_l,num] =min(l);
-    num_bond = num(1);  
-end
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
     po=0;
@@ -376,37 +333,41 @@ end
 %% A行列解析
 %カリタニさん参照
 
-function [mat_er,plan_er,flag]=A_matrix(A,LM_current,LM_first,A_n,LM_t_1)
+function [matrix_error,matrix_timespace_error,flag]=A_matrix(A,LM_current,LM_first,A_n,LM_t_1)
     global Path_analysis;
-    mat_er = cond(A)*norm(A*LM_first-LM_current)/norm(A*LM_first);
-    plan_er = cond(A_n)*norm(A_n-A)/norm(A_n);
+    matrix_error = cond(A)*norm(A*LM_first-LM_current,2)/norm(A*LM_first,2);
+    matrix_timespace_error = cond(A_n)*norm(A_n-A,2)/norm(A_n,2);
     [h,~] = size(LM_t_1);
-    [~,Z_first,V_first] = svd(LM_first);
-    [~,Z_current,V_current] = svd(LM_current);
+    [~,S_first,V_first] = svd(LM_first);
+    [~,S_current,V_current] = svd(LM_current);
     VTRate_spatial = corrcoef(V_current,V_first);
-    CNRate_spatial = cond(Z_current)/cond(Z_first);
+    CNRate_spatial = cond(S_current)/cond(S_first);
     flag = 0;
+    [U_distortion,S_distortion,V_distortion] = svd(A);
     
-    %{
-    if CNRate_spatial < 0.8 || VTRate_spatial(1,2) < 0.8
+    rotation = U_distortion*V_distortion;
+
+    disp(cond(A));
+    if CNRate_spatial > 1.5 || VTRate_spatial(1,2) < 0.8
         flag =1;
     end
-    %}
+    
     
     if h == 3
         [~,Z_t_1,~] = svd(LM_t_1);
         %VTRate_seque = sum(dot(V_current,V_t_1))/3;
-        CNRate_seque = cond(Z_current)/cond(Z_t_1);
-        Path_analysis_vir = [mat_er,plan_er,VTRate_spatial(1,2),CNRate_spatial,CNRate_seque];
+        CNRate_seque = cond(S_current)/cond(Z_t_1);
+        Path_analysis_vir = [matrix_error,matrix_timespace_error,VTRate_spatial(1,2),CNRate_spatial,CNRate_seque];
         Path_analysis = [Path_analysis;Path_analysis_vir];
         file = sprintf("A_matrix.mat");
         save(file,"Path_analysis");
-        %fprintf("A matrix disperation --> cond %f,%f\n",CNRate_spatial,VTRate_spatial(1,2));
+        fprintf("A matrix disperation (Utsuno proposal)--> Error Size %f, Error direction %f\n",CNRate_spatial,VTRate_spatial(1,2));
+        fprintf("A matrix disperation (Karitani proposal)--> Matrix Error %e, Timespace Error %e\n",matrix_error,matrix_timespace_error);
     end
 end
 
 %% センサ検知前位置のグラフを表示
-function [b] = graph(glo_gosa_obs,p,size)
+function [b] = graph_first(glo_gosa_obs,p,size)
     
     for i=1:length(glo_gosa_obs(1,:))
         b(i) = en_plot_blue(glo_gosa_obs(:,i).',size(i));
@@ -552,7 +513,7 @@ end
 
 
 %% local plan
-function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp,ang,wp_add_array)
+function [wp,start,ang,flag,b,up_obs] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp,ang,wp_add_array)
 
     x=[start ang 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
     global glo_obs;
@@ -566,7 +527,7 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
     global po_cdc;
     global flag_add;
     Hz = 2;
-    Goal_tor = 0.4;
+    Goal_tor = 0.5;
     flag = 0;
     
     
@@ -584,10 +545,7 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
     % Main loop
     for i=1:5000
         
-        rand_n = randi(10);
-        if flag_add == 1
-            rand_n = 100;
-        end
+       
         R = rem(i*0.5,Hz);
         if i == 1 && wp_i == 1 
             goal = wp_init(:,wp_i).';
@@ -660,13 +618,12 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
                 b(j)=en_plot_orange(up_obs(:,j).',rand_size(j));
             end
         end
-
         
-
         
         [~,Cols] = size(up_obs);
+        
         if R == 0 && Cols > 2
-            [wp,k,mat_er,plan_er]=correction(up_obs,gosa_obs,wp_add_array);
+            [wp,k,mat_er,plan_er,flag]=correction(up_obs,gosa_obs,wp_add_array);
             if flag == 1
                 ang = x(3);
                 %プロットポイントコメントアウト部分
@@ -676,11 +633,13 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
                 break;
             end
         end
+        
         for j=wp_i:length(wp(1,:))
           wp_plt(j) = plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
           hold on;
         end
         
+        %{
         if rand_n == 9 && wp_i > 1
             disp('Add !!');
             flag = 1;
@@ -692,6 +651,7 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
             delete(r);       
             break;
         end
+        %}
         
         %ゴール判定
         if norm(x(1:2)-goal')<Goal_tor
@@ -713,14 +673,6 @@ function [wp,start,ang,flag,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp
             obstacleR=0.1;
         end
 
-        if  i > 40 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-40,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-40,2)) < 1.0 
-            obstacleR=0.0;
-            evalParam(6)=0.3;
-        end
-
-        if  i > 100 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-100,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-100,2)) < 1.0 
-            Goal_tor=5.0;
-        end
 
         if  i > 150 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-150,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-150,2)) < 1.0 
             disp('Skip Waypoint');
