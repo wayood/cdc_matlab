@@ -78,15 +78,9 @@ glo_start=p.start;
 %初期化
 i=1;
 po_cdc=[];
-slip=30;
-dt=0.1;
-count=1;
-sr=0;
-p_cdc=0;
-p_cd=0;
-p_init=0;
-p_i=0;
-v=5;
+slip = 70;
+dt = 0.1;
+count = 1;
 
 obs = ob_round(glo_gosa_obs,glo_rand_size);
 ang = pi/2;
@@ -102,6 +96,7 @@ while 1
         disp("Finish");
         break;
    end
+       
    if flag == 1
        disp("Please add waypoint !!");
        
@@ -109,7 +104,16 @@ while 1
        delete(two);
        delete(two_init);
        delete(wp_kill);
+       tstart = cputime;
        [wp_replan] = voronoi_waypoint_generation(p.start,wp(:,i),current_obs);
+       time_end = cputime - tstart;
+       disp(time_end);
+       
+       tstart = cputime;
+       [wp_replan_stock] = voronoi_waypoint_generation_end(p.start,wp(:,end),current_obs);
+       time_add = cputime - tstart;
+       disp(time_add);
+       
        % [po_st,sum_po_st] = initila_potential(glo_gosa_obs,wp,glo_rand_size);
        pl_wp=[wp_init(:,1:i-1) wp_replan wp_init(:,i+2:end)];
        two = plot([wp_replan(1,:) wp_init(1,i+2:end)],[wp_replan(2,:) wp_init(2,i+2:end)],'-r','LineWidth',2);
@@ -285,23 +289,22 @@ end
 function [wp_new,k,mat_er,plan_er,flag]=correction(lm_current,lm_first,wp_add_array)
     global wp_init;
     global lm_cur_1;
-    wp_new_add(1).wp = [];
-    A=lm_current*pinv(lm_first);
-    wp_init(3,:)=1;
     
-    A(3,1)=0;
-    A(3,2)=0;
     [h,~]=size(lm_current);
     if h == 2
         lm_current(3,:) = 1;
     end
-    
     
     [h,~]=size(lm_first);
     
     if h == 2
         lm_first(3,:) = 1;
     end
+    
+    wp_new_add(1).wp = [];
+    A=lm_current*pinv(lm_first);
+    wp_init(3,:)=1; 
+  
     global A_n;
     flag = 0;
     if isempty(A_n)==0
@@ -335,8 +338,8 @@ end
 
 function [matrix_error,matrix_timespace_error,flag]=A_matrix(A,LM_current,LM_first,A_n,LM_t_1)
     global Path_analysis;
-    matrix_error = cond(A)*norm(A*LM_first-LM_current,2)/norm(A*LM_first,2);
-    matrix_timespace_error = cond(A_n)*norm(A_n-A,2)/norm(A_n,2);
+    matrix_error = cond(A)*norm(A*LM_first-LM_current)/norm(A*LM_first);
+    matrix_timespace_error = cond(A_n)*norm(A_n-A)/norm(A_n);
     [h,~] = size(LM_t_1);
     [~,S_first,V_first] = svd(LM_first);
     [~,S_current,V_current] = svd(LM_current);
@@ -346,23 +349,25 @@ function [matrix_error,matrix_timespace_error,flag]=A_matrix(A,LM_current,LM_fir
     [U_distortion,S_distortion,V_distortion] = svd(A);
     
     rotation = U_distortion*V_distortion;
-
-    disp(cond(A));
-    if CNRate_spatial > 1.5 || VTRate_spatial(1,2) < 0.8
+    
+    theta_z = atan(-rotation(1,2)/rotation(1,1));
+    parallel_y = 2*(-rotation(3,2)/rotation(3,3));
+    parallel_x = 2*((rotation(3,1)+rotation(3,2))/(rotation(2,1)+rotation(2,2)));
+    
+    if CNRate_spatial > 1.5  || matrix_error > 1.0 || matrix_timespace_error > 0.3
         flag =1;
     end
-    
     
     if h == 3
         [~,Z_t_1,~] = svd(LM_t_1);
         %VTRate_seque = sum(dot(V_current,V_t_1))/3;
         CNRate_seque = cond(S_current)/cond(Z_t_1);
-        Path_analysis_vir = [matrix_error,matrix_timespace_error,VTRate_spatial(1,2),CNRate_spatial,CNRate_seque];
+        Path_analysis_vir = [matrix_error,matrix_timespace_error,parallel_x,parallel_y,theta_z,VTRate_spatial(1,2),CNRate_spatial,CNRate_seque,cond(A)];
         Path_analysis = [Path_analysis;Path_analysis_vir];
         file = sprintf("A_matrix.mat");
         save(file,"Path_analysis");
-        fprintf("A matrix disperation (Utsuno proposal)--> Error Size %f, Error direction %f\n",CNRate_spatial,VTRate_spatial(1,2));
-        fprintf("A matrix disperation (Karitani proposal)--> Matrix Error %e, Timespace Error %e\n",matrix_error,matrix_timespace_error);
+        fprintf("A matrix disperation (Utsuno proposal)\n  --> Error Size %f, Error direction %f\n\n",CNRate_spatial,VTRate_spatial(1,2));
+        fprintf("A matrix disperation (Karitani proposal)\n  --> Matrix Error %f, Timespace Error %f, Parallel Translation(x) %f, Parallel Translation(y) %f,Rotation %f \n\n",matrix_error,matrix_timespace_error,parallel_x,parallel_y,theta_z);
     end
 end
 
@@ -668,12 +673,7 @@ function [wp,start,ang,flag,b,up_obs] = DynamicWindowApproach_for_cdc(start,obst
             break;
         end
 
-
-        if  i > 30 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-30,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-30,2)) < 1.0 
-            obstacleR=0.1;
-        end
-
-
+        %{
         if  i > 150 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-150,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-150,2)) < 1.0 
             disp('Skip Waypoint');
             %プロットポイントコメントアウト部分
@@ -682,7 +682,8 @@ function [wp,start,ang,flag,b,up_obs] = DynamicWindowApproach_for_cdc(start,obst
                delete(r);
             break;
         end
-
+        %}
+        
         %プロットポイントコメントアウト部分
 
         if i>1    

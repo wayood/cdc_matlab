@@ -227,10 +227,8 @@ end
 function [awp,k,mat_er,plan_er]=correction(lm_current,lm_first)
     global wp_init;
     global lm_cur_1;
-    A=lm_current*pinv(lm_first);
-    wp_init(3,:)=1;
-    A(3,1)=0;
-    A(3,2)=0;
+
+
     [h,~]=size(lm_current);
     if h == 2
         lm_current(3,:) = 1;
@@ -239,6 +237,10 @@ function [awp,k,mat_er,plan_er]=correction(lm_current,lm_first)
     if h == 2
         lm_first(3,:) = 1;
     end
+    
+    A=lm_current*pinv(lm_first);
+    wp_init(3,:)=1;
+    
     global A_n;
     if isempty(A_n)==0
      [mat_er,plan_er] = A_matrix(A,lm_current,lm_first,A_n,lm_cur_1);
@@ -571,7 +573,7 @@ function [wp,start,ang,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp
         if  i > 150 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-150,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-150,2)) < 1.0 
             disp('Skip Waypoint');
             %プロットポイントコメントアウト部分
-               delete(b);
+            delete(b);
             break;
         end
 
