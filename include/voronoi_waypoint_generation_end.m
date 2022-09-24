@@ -9,8 +9,7 @@ function [wp_add] = voronoi_waypoint_generation(start,goal,obstacle)
     DT = delaunayTriangulation(P);
     [wp_canditate,edge] = voronoiDiagram(DT);
     [vx,vy] = voronoi(obstacle(1,:),obstacle(2,:));
-    voronoi(obstacle(1,:),obstacle(2,:));
-    
+
     x_start = wp_canditate(edge{1},1);
     y_start = wp_canditate(edge{1},2);
     x_end = wp_canditate(edge{length(obstacle(1,:))},1);

@@ -87,7 +87,7 @@ result=false;
 com_x=abs(a(1)-b(1));
 com_y=abs(a(2)-b(2));
 l = sqrt(com_x^2+com_y^2);
-if l < 0.2
+if l < 0.8
     result=true;
 end
 end

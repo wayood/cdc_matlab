@@ -81,6 +81,7 @@ po_cdc=[];
 slip = 70;
 dt = 0.1;
 count = 1;
+elapsed_count = 1;
 
 obs = ob_round(glo_gosa_obs,glo_rand_size);
 ang = pi/2;
@@ -91,12 +92,12 @@ wp_add_array(1).lm_add = [];
 wp_add_array(1).lm_add_range = [];
 %ナビゲーション
 while 1
-   [wp,p.start,ang,flag,kill_obs,current_obs] = DynamicWindowApproach_for_cdc(p.start.',obs.',i,wp,ang,wp_add_array); 
+   [wp,p.start,ang,flag,kill_obs,current_obs,obs_list] = DynamicWindowApproach_for_cdc(p.start.',obs.',i,wp,ang,wp_add_array); 
    if i == length(wp(1,:))
         disp("Finish");
         break;
    end
-       
+   
    if flag == 1
        disp("Please add waypoint !!");
        
@@ -104,15 +105,16 @@ while 1
        delete(two);
        delete(two_init);
        delete(wp_kill);
-       tstart = cputime;
-       [wp_replan] = voronoi_waypoint_generation(p.start,wp(:,i),current_obs);
-       time_end = cputime - tstart;
-       disp(time_end);
        
-       tstart = cputime;
+       tic
        [wp_replan_stock] = voronoi_waypoint_generation_end(p.start,wp(:,end),current_obs);
-       time_add = cputime - tstart;
-       disp(time_add);
+       elapsedTime_end(elapsed_count) = toc;
+       
+       tic
+       [wp_replan] = voronoi_waypoint_generation(p.start,wp(:,i),current_obs);
+       elapsedTime_add(elapsed_count) = toc;
+       
+       elapsed_count = elapsed_count + 1;
        
        % [po_st,sum_po_st] = initila_potential(glo_gosa_obs,wp,glo_rand_size);
        pl_wp=[wp_init(:,1:i-1) wp_replan wp_init(:,i+2:end)];
@@ -123,8 +125,8 @@ while 1
        
        wp_add_array(wp_add_count).wp = wp_replan;
        wp_add_array(wp_add_count).count = i;
-       lm_add_array(1,:) = glo_gosa_obs(1,:) + glo_slip_x;
-       lm_add_array(2,:) = glo_gosa_obs(2,:) + glo_slip_y;
+       lm_add_array(1,:) = glo_gosa_obs(1,:) ;
+       lm_add_array(2,:) = glo_gosa_obs(2,:) ;
        lm_add_array(3,:) = 1;
        wp_add_array(wp_add_count).lm_add = lm_add_array;
        
@@ -286,7 +288,7 @@ l=norm(a-b);
 end
 
 %% 軌道補正計算
-function [wp_new,k,mat_er,plan_er,flag]=correction(lm_current,lm_first,wp_add_array)
+function [wp_new,k,mat_er,plan_er,flag]=compensation(lm_current,lm_first,wp_add_array)
     global wp_init;
     global lm_cur_1;
     
@@ -345,7 +347,6 @@ function [matrix_error,matrix_timespace_error,flag]=A_matrix(A,LM_current,LM_fir
     [~,S_current,V_current] = svd(LM_current);
     VTRate_spatial = corrcoef(V_current,V_first);
     CNRate_spatial = cond(S_current)/cond(S_first);
-    flag = 0;
     [U_distortion,S_distortion,V_distortion] = svd(A);
     
     rotation = U_distortion*V_distortion;
@@ -353,6 +354,7 @@ function [matrix_error,matrix_timespace_error,flag]=A_matrix(A,LM_current,LM_fir
     theta_z = atan(-rotation(1,2)/rotation(1,1));
     parallel_y = 2*(-rotation(3,2)/rotation(3,3));
     parallel_x = 2*((rotation(3,1)+rotation(3,2))/(rotation(2,1)+rotation(2,2)));
+    flag = 0;
     
     if CNRate_spatial > 1.5  || matrix_error > 1.0 || matrix_timespace_error > 0.3
         flag =1;
@@ -518,7 +520,7 @@ end
 
 
 %% local plan
-function [wp,start,ang,flag,b,up_obs] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp,ang,wp_add_array)
+function [wp,start,ang,flag,b,up_obs,obs] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp,ang,wp_add_array)
 
     x=[start ang 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
     global glo_obs;
@@ -628,7 +630,12 @@ function [wp,start,ang,flag,b,up_obs] = DynamicWindowApproach_for_cdc(start,obst
         [~,Cols] = size(up_obs);
         
         if R == 0 && Cols > 2
-            [wp,k,mat_er,plan_er,flag]=correction(up_obs,gosa_obs,wp_add_array);
+            [wp,k,mat_er,plan_er,flag_stock]=compensation(up_obs,gosa_obs,wp_add_array);
+            
+            if flag_stock == 1
+                flag = 1;
+            end
+            
             if flag == 1
                 ang = x(3);
                 %プロットポイントコメントアウト部分
@@ -672,7 +679,10 @@ function [wp,start,ang,flag,b,up_obs] = DynamicWindowApproach_for_cdc(start,obst
             delete(b);        
             break;
         end
-
+        
+        if i > 50 && norm([x(1) - result.x(end-50,1),x(2) - result.x(end-50,2)]) < 0.3
+            flag = 1;
+        end
         %{
         if  i > 150 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-150,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-150,2)) < 1.0 
             disp('Skip Waypoint');
