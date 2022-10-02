@@ -136,6 +136,7 @@ function [wp_add] = voronoi_waypoint_generation(start,goal,obstacle)
     [path,~] = shortestpath(G,start_node_num,goal_node_num);
     wp_add = [];
     
+    disp(path);
     for i = 1:length(path)
         [cols,rows] = find(path(1,i) == vx_num);
         wp = [vx(cols(1,1),rows(1,1))
@@ -144,6 +145,8 @@ function [wp_add] = voronoi_waypoint_generation(start,goal,obstacle)
     end
     wp_add = [wp_add goal];
     
+    plot(wp_add(1,:),wp_add(2,:),'g:o','MarkerSize',15);
+    hold on;
 end
 
 

@@ -1,5 +1,6 @@
 %% 軌道補正アルゴリズム
 clear all;
+
 %% 初期宣言
 p.start = [0;0];
 GOAL = [0;17];
@@ -97,7 +98,7 @@ while 1
         disp("Finish");
         break;
    end
-   
+   [wp_] = voronoi_waypoint_generation(p.start,wp(:,i+1),current_obs);
    if flag == 1
        disp("Please add waypoint !!");
        
@@ -125,23 +126,10 @@ while 1
        
        wp_add_array(wp_add_count).wp = wp_replan;
        wp_add_array(wp_add_count).count = i;
-       lm_add_array(1,:) = glo_gosa_obs(1,:) ;
-       lm_add_array(2,:) = glo_gosa_obs(2,:) ;
+       lm_add_array(1,:) = glo_gosa_obs(1,:);
+       lm_add_array(2,:) = glo_gosa_obs(2,:);
        lm_add_array(3,:) = 1;
        wp_add_array(wp_add_count).lm_add = lm_add_array;
-       
-       %{
-       Potential_WP_init = [p.start wp_init(:,1:count-1)];
-       [po_init,sum_po_init] = initial_potential(glo_gosa_obs,Potential_WP_init,glo_rand_size);
-       Potential_WP_add = [wp_init(:,num_bond-1) wp_add wp_init(:,num_bond)];
-       [po_add,sum_po_add] = initial_potential(wp_add_array(wp_add_count).lm_add,Potential_WP_add,glo_rand_size);
-       Potential_WP_init_sand =  wp_init(:,num_bond:end);
-       [po_init_sand,sum_po_init_sand] = initial_potential(glo_gosa_obs,Potential_WP_init_sand,glo_rand_size);
-       po = [po_init po_add po_init_sand];
-       sum_po = sum(po) / length(po);
-       currentFile = sprintf('./potential/potential.mat');
-       save(currentFile,'po','sum_po');
-       %}
        
        i = i-1;
        glo_gosa_obs(3,:) = [];
@@ -356,7 +344,7 @@ function [matrix_error,matrix_timespace_error,flag]=A_matrix(A,LM_current,LM_fir
     parallel_x = 2*((rotation(3,1)+rotation(3,2))/(rotation(2,1)+rotation(2,2)));
     flag = 0;
     
-    if CNRate_spatial > 1.5  || matrix_error > 1.0 || matrix_timespace_error > 0.3
+    if matrix_error > 1.0 || matrix_timespace_error > 0.3
         flag =1;
     end
     
