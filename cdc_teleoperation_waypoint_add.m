@@ -1,6 +1,7 @@
 %% 軌道補正アルゴリズム
 clear all;
-
+fig = figure;
+fig.Color = 'white';
 %% 初期宣言
 p.start = [0;0];
 GOAL = [0;17];
@@ -46,8 +47,8 @@ end
 
 [glo_gosa_obs]=gosamodel(glo_obs,p.start,ang_wp);%経路生成時のLM座標
 gosa_plot = graph_first(glo_gosa_obs,p,glo_rand_size);
-plot(GOAL(1,1),GOAL(2,1),'g:o','MarkerSize',10);
-hold on;
+%plot(GOAL(1,1),GOAL(2,1),'g:o','MarkerSize',10);
+%hold on;
 
 %wpを手動で設定
 [x,y]=ginput;
@@ -57,6 +58,8 @@ global wp_init;
 wp = [wp GOAL];
 wp_init = wp;
 glo_obs_init = glo_obs;
+currentFile = sprintf('./wp/path_obstacle.mat');
+save(currentFile,'glo_obs_init','wp_init','glo_gosa_obs','glo_rand_size');
 
 two_init = f_twopoint(wp(:,1),p.start());
 for i=1:length(wp(1,:))-1
@@ -64,10 +67,12 @@ for i=1:length(wp(1,:))-1
 end
 hold on;
 
+%{
 for j=1:length(wp(1,:))
   wp_kill(j) = plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
   hold on;
 end
+%}
 
 %初期経路での評価
 [po,sum_po] = initial_potential(glo_gosa_obs,wp,glo_rand_size);
@@ -91,31 +96,47 @@ wp_add_array(1).wp = [];
 wp_add_array(1).count = [];
 wp_add_array(1).lm_add = [];
 wp_add_array(1).lm_add_range = [];
+
 %ナビゲーション
 while 1
-   [wp,p.start,ang,flag,kill_obs,current_obs,obs_list] = DynamicWindowApproach_for_cdc(p.start.',obs.',i,wp,ang,wp_add_array); 
+   [wp,p.start,ang,flag,kill_obs,current_obs,obs_list,current_rand_size] = DynamicWindowApproach_for_cdc(p.start.',obs.',i,wp,ang,wp_add_array); 
    if i == length(wp(1,:))
         disp("Finish");
         break;
    end
-   [wp_] = voronoi_waypoint_generation(p.start,wp(:,i+1),current_obs);
+   [x,y]=ginput;
+    wp_s=[x.';
+        y.'];
+    wp = [wp wp_s];
+    
+    add_path = parfeval(@DynamicWindowApproach_global,1,wp(:,end-1).',wp(:,end).',obs_list);
+    value = fetchOutputs(add_path);
    if flag == 1
        disp("Please add waypoint !!");
        
        delete(gosa_plot);
        delete(two);
        delete(two_init);
-       delete(wp_kill);
+       %delete(wp_kill);
+       
+       current_obs(3,:) = 1;
+       tic
+       [rrt_path] =  RRTstar3D(p.start,wp(:,i),current_obs,current_rand_size);
+       elapsedTime_astar(elapsed_count) = toc;
+       plot([p.start(1,1) ;rrt_path(:,1) ;wp(1,i)],[p.start(2,1) ;rrt_path(:,2);wp(2,i)],"-m",'LineWidth',2);
+       hold on;
+       
+       [po_rrt_star,sum_po_rrt_star] = initial_potential(current_obs,[p.start rrt_path(:,1:2).' wp(:,i)],current_rand_size);
+       R_rrt_star = correlation([p.start wp(:,i)],[p.start rrt_path(:,1:2).' wp(:,i)]);
+       fprintf("RRT star : time %f [sec] , safe %f ,correlation %f [%]\n\n",elapsedTime_astar(1),sum_po_rrt_star,R_rrt_star(1,2));
        
        tic
-       [wp_replan_stock] = voronoi_waypoint_generation_end(p.start,wp(:,end),current_obs);
-       elapsedTime_end(elapsed_count) = toc;
-       
-       tic
-       [wp_replan] = voronoi_waypoint_generation(p.start,wp(:,i),current_obs);
+       [wp_replan] = voronoi_waypoint_generation(p.start,wp(:,i),current_obs(1:2,:));
        elapsedTime_add(elapsed_count) = toc;
-       
        elapsed_count = elapsed_count + 1;
+       [po_voronoi,sum_po_voronoi] = initial_potential(current_obs,[p.start wp_replan],current_rand_size);
+       R_voronoi = correlation([p.start wp(:,i)],[p.start wp_replan]);
+       fprintf("Voronoi graph : time %f [sec] , safe %f ,correlation %f [%]\n\n",elapsedTime_add(1),sum_po_voronoi,R_voronoi(1,2));
        
        % [po_st,sum_po_st] = initila_potential(glo_gosa_obs,wp,glo_rand_size);
        pl_wp=[wp_init(:,1:i-1) wp_replan wp_init(:,i+2:end)];
@@ -214,6 +235,25 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
     glo_obs(1,:) = glo_obs_init(1,:) + glo_slip_x;
     glo_obs(2,:) = glo_obs_init(2,:) + glo_slip_y;
     up_obs(3,:)=1;
+end
+function R = correlation(one_wp,another_wp)
+    N = length(another_wp(1,:)) - 1;
+    one_x = linspace(one_wp(1,1),one_wp(1,end),N*100);
+    one_y = linspace(one_wp(2,1),one_wp(2,end),N*100);
+    one = [one_x
+           one_y];
+       
+    another_x = [];
+    another_y = [];
+    for i = 2:length(another_wp(1,:))
+        stock_x = linspace(another_wp(1,i-1),another_wp(1,i),100);
+        stock_y = linspace(another_wp(2,i-1),another_wp(2,i),100);
+        another_x = [another_x stock_x];
+        another_y = [another_y stock_y];
+    end
+    another = [another_x
+               another_y];
+    R = corrcoef(one,another);
 end
 %% スリップ率導入
 function sliprate(ang,v)
@@ -342,6 +382,11 @@ function [matrix_error,matrix_timespace_error,flag]=A_matrix(A,LM_current,LM_fir
     theta_z = atan(-rotation(1,2)/rotation(1,1));
     parallel_y = 2*(-rotation(3,2)/rotation(3,3));
     parallel_x = 2*((rotation(3,1)+rotation(3,2))/(rotation(2,1)+rotation(2,2)));
+    
+    rotation_theta_1 = asin(U_distortion(1,1));
+    rotation_theta_2 = asin(V_distortion(1,1));
+    streching_x = S_distortion(1,1);
+    streching_y = S_distortion(2,2);
     flag = 0;
     
     if matrix_error > 1.0 || matrix_timespace_error > 0.3
@@ -358,6 +403,7 @@ function [matrix_error,matrix_timespace_error,flag]=A_matrix(A,LM_current,LM_fir
         save(file,"Path_analysis");
         fprintf("A matrix disperation (Utsuno proposal)\n  --> Error Size %f, Error direction %f\n\n",CNRate_spatial,VTRate_spatial(1,2));
         fprintf("A matrix disperation (Karitani proposal)\n  --> Matrix Error %f, Timespace Error %f, Parallel Translation(x) %f, Parallel Translation(y) %f,Rotation %f \n\n",matrix_error,matrix_timespace_error,parallel_x,parallel_y,theta_z);
+        fprintf("A matrix disperation (main proposed)\n  --> Rotation %f, Streching x %f, Streching Y %f\n\n",rotation_theta_1+rotation_theta_2,streching_x,streching_y);
     end
 end
 
@@ -395,8 +441,8 @@ end
 function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
    %視野の射程距離
    range_base=20;
-
-   if obs(3,:)==1
+    [rows,~] = size(obs);
+   if rows == 3
        obs(3,:)=[];
    end
    if ang > pi
@@ -448,7 +494,7 @@ end
 %% 二点間のプロット
 function kill = f_twopoint(af_start,bef_start)
     start = [af_start bef_start];
-    kill = plot(start(1,:),start(2,:),'-r','LineWidth',2);
+    kill = plot(start(1,:),start(2,:),'Color',[1, 0, 0, 0.2],'LineWidth',3);
     hold on;
 end
 
@@ -508,7 +554,7 @@ end
 
 
 %% local plan
-function [wp,start,ang,flag,b,up_obs,obs] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp,ang,wp_add_array)
+function [wp,start,ang,flag,b,up_obs,obs,rand_size] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp,ang,wp_add_array)
 
     x=[start ang 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
     global glo_obs;
@@ -668,7 +714,7 @@ function [wp,start,ang,flag,b,up_obs,obs] = DynamicWindowApproach_for_cdc(start,
             break;
         end
         
-        if i > 50 && norm([x(1) - result.x(end-50,1),x(2) - result.x(end-50,2)]) < 0.3
+        if i > 20 && norm([x(1) - result.x(end-20,1),x(2) - result.x(end-20,2)]) < 0.3
             flag = 1;
         end
         %{

@@ -1,79 +1,81 @@
 %% 読み込みとプロット
 clear all;
+fig = figure;
+fig.Color = 'white';
 numFiles = 15;
 numROOP = 15;
 global N;
 global NU;
 global GOAL;
-GOAL = 110;
+GOAL = 17;
 for N=1:numFiles
 for NU=1:numROOP
-try
+%try
 hold off;
-global cdc_length;
-cdc_length=0.5;%m単位で補正ポイントを設定
 global glo_obs;
 global glo_gosa_obs;
 global glo_rand_size;
+global drive_cdc;
 global dt;
 global slip;
 global glo_slip_x;
 global glo_slip_y;
-slip=0;
-glo_slip_x=0;
-glo_slip_y=0;
+global glo_obs_init;
+global po_cdc;
+po_cdc=[];
+slip=50;
+glo_slip_x = 0;
+glo_slip_y = 0;
 dt=0;
-currentFile = sprintf('./path/path_interp_%d_%d.mat',N,GOAL);
+currentFile = sprintf('./path/path_interp_1_%d.mat',GOAL);
 load(currentFile);
-global drive;
-global po;
-po=[];
-drive=[];
+path=command_path;
+drive_cdc=[];
+glo_obs_init = glo_obs;
 p.start=[0;0];
-path=drive_cdc;
 
-%% プロット関数
-%{
+%プロットポイントコメントアウト部分
+
 graph(glo_gosa_obs,p,glo_rand_size);
 
 for io=1:length(glo_obs(1,:))
-  en_plot_red(glo_obs(:,io).',glo_rand_size(io));
+  kill_ground(io) = en_plot_red(glo_obs(:,io).',glo_rand_size(io));
   hold on;
 end
 
-
 if length(path)>=1
-    plot(path(1,:),path(2,:),'-r','MarkerSize',3);
+    plot(path(1,:),path(2,:),'Color',[1, 0, 0, 0.2],'LineWidth',3);
     hold on;
 end
 hold on;
 
-%}
 
-%% WPを入力
+%% 折線近似
+
+wp = DouglasPeucker(path,0.51);
 
 currentFile = sprintf('./wp/wp_%d_%d_v%d.mat',N,GOAL,NU);
-load(currentFile,"wp");
-%ポテンシャル場によるトレードオフ関係の検索
-wp(1,2:end) = wp(1,2:end) - N;
-%% プロット関数
-%{
+save(currentFile,"wp");
+%プロットポイントコメントアウト部分
+
 for i=1:length(wp(1,:))
   kill(i)=plot(wp(1,i),wp(2,i),'g:o','MarkerSize',10);
   hold on;
 end
 
+%{
 point=twopoint(wp(:,1),p.start);
 kill_point=zeros(100,5000);
 for i=1:length(wp(1,:))-1
-  kill_point(:,i)=twopoint(wp(:,i+1),wp(:,i));
+   kill_point(:,i)=twopoint(wp(:,i+1),wp(:,i));
 end
 kill_point(length(wp(:,1)),:)=[];
 %}
 
 global wp_init;
 wp_init = wp;
-
+global p_i;
+p_i=1;
 %%  逐次補正プログラム
 %軌道補正経路 リアルタイム
 
@@ -83,30 +85,70 @@ count=1;
 obs=ob_round(glo_gosa_obs,glo_rand_size);
 po_i=1;
 
+tic
 %ナビゲーション
+delete(kill_ground);
 while 1
-   
-   [p.start,obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i);
+    
+   [p.start,up_obs,gosa_obs,po_i]=DynamicWindowApproachSample_k(p.start.',wp(:,i).',obs.',path.',po_i,i);
    l=len(wp(:,i).',p.start.');
-   i=i+1;
+
+   %プロットポイントコメントアウト部分
    
+   if count==1
+   delete(kill);
+   %delete(point);
+   %delete(kill_point);
+   end
+   
+   if count>1
+     %逐次的に処理を削除(現在のLM座標(障害物))
+     %delete(kill_p);
+     delete(w);
+   end
+   
+
+   i=i+1;
+   %プロットポイントコメントアウト部分
+   %[b,w]=animation(up_obs,wp,p,i,rand_size);
    %ここでアニメーションが完成
-   if length(wp(1,:)) == i-1 
+   if length(wp(1,:))==i-1
        disp("Finish");
        break;
    end
-   count=count+1;
-   pause(0.001);
    
+   c_path=[];
+   path=[];
+
+   %プロットポイントコメントアウト部分
+   for j=i-1:length(wp(1,:))-1
+         %kill_p_ex=twopoint(wp(:,j+1),wp(:,j));
+       c_path=path_correct(wp(:,j+1),wp(:,j));
+       path=[path c_path];
+          w(j)=plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
+          %kill_p(j-i+2,:)=kill_p_ex;
+   end
+      w(j+1)=plot(wp(1,j+1),wp(2,j+1),'g:o','MarkerSize',10);
+   
+
+   pause(0.001);
 end
+%{
 catch ME
-     continue;
+    continue;
+end
+%}
+toc
+
 end
 end
-end
+
 %% ポテンシャル場で評価
 function po=potential(obs,move,size)
     po=0;
+    if obs(3,:)==1
+        obs(3,:)=[];
+    end
     for i=1:length(obs(1,:))
      l=len(obs(:,i).',move.');
      if l < size(i)
@@ -120,28 +162,73 @@ end
 
 %% 誤差モデル計算　
 %距離による関係性を考えた。
-%これはDEMのステレオデータによる誤差を主に考えた。
-
-%誤差をロボット進行方向に考えて表示
-function [up_obs]=gosa_move(obs,start,ang_wp,v)
- sliprate(ang_wp,v);
- global glo_slip_x;
- global glo_slip_y;
- if isempty(obs(3,:)) == 0
-     obs(3,:)= [];
- end
+%これステレオ視による誤差を主に考えた。
+function [up_obs]=gosamodel(obs,start,ang)
  for i=1:length(obs(1,:))
+    [~,leng] = cart2pol(obs(1,i),obs(2,i));
     r(i)=len(obs(:,i).',start.');
     if r(i)<1
         r(i)=0;
     end
-    l(i)=18.5*10^-2*r(i)^2*0.01;
-    error=l(i);
-    error_x=cos(ang_wp)*error;
-    error_y=sin(ang_wp)*error;
-    up_obs(1,i)=error_x+obs(1,i)+glo_slip_x;
-    up_obs(2,i)=error_y+obs(2,i)+glo_slip_y;
- end
+    x_ran=-0.01+0.02*rand; %キャリブレーションや分解能での誤差を考える
+    y_ran=-0.01+0.02*rand;
+    if leng >= 20
+        l=18.5*10^-2*20^2*0.01;
+        [x_error,y_error] = pol2cart(ang,l);
+        up_obs(1,i)=obs(1,i)+x_error+x_ran;
+        up_obs(2,i)=obs(2,i)+y_error+y_ran;
+        continue;
+    end
+    l=18.5*10^-2*r(i)^2*0.01;
+    [x_error,y_error] = pol2cart(ang,l);
+    up_obs(1,i)=obs(1,i)+x_error+x_ran;
+    up_obs(2,i)=obs(2,i)+y_error+y_ran;
+end
+    up_obs(3,:)=1;
+end
+
+
+%誤差をロボット進行方向に考えて表示
+function [up_obs]=gosa_move(obs,start,ang_wp,v)
+    global glo_slip_x;
+    global glo_slip_y;
+    global glo_obs;
+    global glo_obs_init;
+    sliprate(ang_wp,v);
+     
+    up_obs(1,:)=obs(1,:)+glo_slip_x;
+    up_obs(2,:)=obs(2,:)+glo_slip_y;
+    glo_obs(1,:) = glo_obs_init(1,:) + glo_slip_x;
+    glo_obs(2,:) = glo_obs_init(2,:) + glo_slip_y;
+    up_obs(3,:)=1;
+    
+end
+
+function result = DouglasPeucker(Points,epsilon)
+dmax = 0;
+edx = length(Points);
+for ii = 2:edx-1
+    d = penDistance(Points(:,ii),Points(:,1),Points(:,edx));
+    if d > dmax
+        idx = ii;
+        dmax = d;
+    end
+end
+
+if dmax > epsilon
+    % recursive call
+    recResult1 = DouglasPeucker(Points(:,1:idx),epsilon);
+    recResult2 = DouglasPeucker(Points(:,idx:edx),epsilon);
+    result = [recResult1(:,1:length(recResult1)-1) recResult2(:,1:length(recResult2))];
+else
+    result = [Points(:,1) Points(:,edx)];
+end
+% If max distance is greater than epsilon, recursively simplify
+    function d = penDistance(Pp, P1, P2)
+        % find the distance between a Point Pp and a line segment between P1, P2.
+        d = abs((P2(2,1)-P1(2,1))*Pp(1,1) - (P2(1,1)-P1(1,1))*Pp(2,1) + P2(1,1)*P1(2,1) - P2(2,1)*P1(1,1)) ...
+            / sqrt((P2(2,1)-P1(2,1))^2 + (P2(1,1)-P1(1,1))^2);
+    end
 end
 
 %蓄積誤差を保存
@@ -162,13 +249,14 @@ function sliprate(ang,v)
  global dt; 
  global glo_slip_x;
  global glo_slip_y;
- s=rand*50/100;
+ global slip;
+ s=rand*slip/100;
  v_real=(1-s)*v;
  slip_length=(v_real-v)*dt;
  x=slip_length*cos(ang);
  y=slip_length*sin(ang);
- glo_slip_x =  glo_slip_x + x;
- glo_slip_y =  glo_slip_y + y;
+ glo_slip_x =  glo_slip_x - x;
+ glo_slip_y =  glo_slip_y - y;
 end
 
 %% 逐次的なアニメーション
@@ -189,6 +277,39 @@ function l=len(a,b)
 l=norm(a-b);
 end
 
+%% 軌道補正計算
+function [awp,k,mat_er,plan_er]=correction(lm_current,lm_first)
+    global wp_init;
+    A=lm_current*pinv(lm_first);
+    wp(3,:)=1;
+    A(3,1)=0;
+    A(3,2)=0;
+    global A_n;
+    if isempty(A_n)==0
+     [mat_er,plan_er] = A_matrix(A,lm_current,lm_first,A_n);
+    else
+        mat_er=0;
+        plan_er=0;
+    end
+    A_n=A;
+    wp = wp_init;
+    wp(3,:) = 1;
+    
+    awp=A*wp;
+   
+    awp(1,:)=awp(1,:);
+    awp(2,:)=awp(2,:);
+    awp(3,:)=[];
+    k=cond(A,2);
+end
+
+%% A行列解析
+%カリタニさん参照
+%ネットに条件数とかの同じような説明ありそちらも参照可能
+function [mat_er,plan_er]=A_matrix(A_n,lm_c,lm_f,A_n_1)
+  mat_er = cond(A_n)*norm(A_n*lm_f-lm_c)/norm(A_n*lm_f);
+  plan_er = cond(A_n_1)*norm(A_n_1-A_n)/norm(A_n_1);
+end
 
 %% センサ検知前位置のグラフを表示
 function graph(glo_gosa_obs,p,size)
@@ -200,38 +321,19 @@ function graph(glo_gosa_obs,p,size)
     grid on;
     xlabel('x[m]')
     ylabel('y[m]')
-    xlim([-50 50]);
-    ylim([0 300]);
+    xlim([-20 20]);
+    ylim([0 30]);
 end
 
 %% 誤差を明確化ラインプロット
 function kill=cdc_obs_line(lm_first,lm_current)
-for i=1:length(lm_current(1,:))
-    kill(i)=twopoint(lm_current(:,i),lm_first(:,i));
+if lm_first(3,:) == 1
+    lm_first(3,:) = [];
 end
+for i=1:length(lm_first(1,:))
+    kill_kari=twopoint(lm_current(:,i),lm_first(:,i));
+    kill(i,:)=kill_kari;
 end
-
-%% ロボットが観測せず移動している間の軌跡のプロット
-function fx(af_start,bef_start)
-    A=[bef_start(1,1) 1;
-        af_start(1,1) 1];
-    B=[bef_start(2,1);
-        af_start(2,1)];
-    X=linsolve(A,B);
-    a=X(1,1);
-    b=X(2,1);
-    if af_start(2,1)>bef_start(2,1)
-      for y=bef_start(2,1):0.01:af_start(2,1)
-         plot((y-b)/a,y,'b:.','MarkerSize',3);
-         hold on;
-       end
-    else
-      for y=af_start(2,1):0.01:bef_start(2,1)
-         plot((y-b)/a,y,'b:.','MarkerSize',3);
-         hold on;
-       end
-    end
-   
 end
 
 %% 経路生成時のLM座標の視野角判定
@@ -249,34 +351,57 @@ function [rand_size,cur_gosa_obs]=sensor_judge(gosa_obs,sen_num,glo_rand_size)
 end
 
 %% 視野角を考慮
-function [ang_wp,sen_num,sen_obs]=sensor_range(obs,start,ang)
+function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
    %視野の射程距離
-   range_base=50;
-
-   ang_90=pi/2-ang;
-   b=start(2,1)-start(1,1)*tan(ang_90);
+   range_base=40;
+    [rows,~] = size(obs);
+   if rows == 3
+       obs(3,:)=[];
+   end
+   if ang > pi
+       ang_pol = ang - 2*pi;
+   elseif ang > 2*pi
+       r = rem(ang,2*pi);
+       if r > pi
+           ang_pol = r - 2*pi;
+       else
+           ang_pol = r;
+       end
+   else
+       ang_pol = ang;
+   end
+   range_min = ang_pol-(11*pi/36);
+   range_max = ang_pol+(11*pi/36);
+   if abs(range_min) > pi && ang_pol < 0
+       range_plus_min = 2*pi - abs(range_min);
+       range_plus_max = pi;
+       range_minus_max = range_max;
+       range_minus_min = -pi;    
+   elseif range_max > pi && ang_pol > 0
+       range_plus_min = range_min;
+       range_plus_max = pi;
+       range_minus_max = range_max - 2*pi;
+       range_minus_min = -pi;
+   else
+       range_plus_min = range_min;
+       range_plus_max = range_max;
+       range_minus_max = -2;
+       range_minus_min = -1;
+   end
+   
    for i=1:length(obs(1,:))
-      [ang_wp,range_wpbase_max,range_wpbase_min,range_s,range_ln]=siya(obs(:,i),start,ang);
-      
-      if range_s>range_wpbase_min && range_s<range_wpbase_max && range_ln<range_base
-        sen_num(i)=0;
-      else
-        obs(:,i)=[-1;-1];
-        sen_num(i)=1;
-      end
+        [ang_obs,range_length] = cart2pol(obs(1,i)-start(1,1),obs(2,i)-start(2,1)); 
+        if ang_obs>range_plus_min && ang_obs<range_plus_max && range_length<range_base
+            sen_num(i)=0;
+        elseif ang_obs>range_minus_min && ang_obs<range_minus_max && range_length<range_base
+            sen_num(i)=0;
+        else
+            obs(:,i)=[-1;-1];
+            sen_num(i)=1;
+        end
    end
       idx = obs(1,:)== -1 & obs(2,:) == -1;
       sen_obs = obs(:,~idx);
-end
-
-%% 視野角計算
-function   [ang,range_wpbase_max,range_wpbase_min,range_s,range_l]=siya(obs,start,ang)
-   range_wpbase_min=ang-(11*pi/36);
-   range_wpbase_max=ang+(11*pi/36);
-   range_l=sqrt((obs(1,1)-start(1,1))^2+(obs(2,1)-start(2,1))^2);
-   range_x=obs(1,1)-start(1,1);
-   range_y=obs(2,1)-start(2,1);
-   range_s=atan2(range_y,range_x);
 end
 
 %% 二点間のプロット
@@ -300,11 +425,31 @@ function t=twopoint(af_start,bef_start)
   end 
   
 end
+
+%% 軌道の保存
+function t=path_correct(af_start,bef_start)
+
+  a=(bef_start(2,1)-af_start(2,1))/(bef_start(1,1)-af_start(1,1));
+  b=bef_start(2,1)-a*bef_start(1,1);
+  x=linspace(bef_start(1,1),af_start(1,1));
+  y=linspace(bef_start(2,1),af_start(2,1));
+  
+  if bef_start(1,1)-af_start(1,1)==0
+   b=bef_start(1,1);
+   t=[b;y];
+  elseif bef_start(2,1)-af_start(2,1)==0
+   t=[x;b];
+  else
+   t=[(y-b)/a;y];
+  end 
+  
+end
+
 %% アニメーション　円の作成
 %下三つは円の塗りつぶし
 function en_plot_blue(glo_obs,size)
  [x,y]=circle(glo_obs(1,1),glo_obs(1,2),size);
- fill(x,y,'b');
+ fill(x,y,'b','FaceAlpha',.3,'EdgeAlpha',.3);
  hold on;
 end
 
@@ -330,6 +475,7 @@ end
 
 
 
+%% 障害物の円を座標格納
 function obs=ob_round(cur_obs,r)
 for i=1:length(r)
     [x,y]=circle(cur_obs(1,i),cur_obs(2,i),r(i));
@@ -342,85 +488,110 @@ end
 end
 
 %% local plan
-function [s,ob,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i)
+function [s,up_obs,gosa_obs,po_i] = DynamicWindowApproachSample_k(start,goal,obstacle,path,po_i,wp_i)
 
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
-
-      
-obstacleR=0.5;%衝突判定用の障害物の半径
-global dt; dt=0.1;%刻み時間[s]
-global glo_gosa_obs;
-global glo_rand_size;
-global drive;
-global po;
+global glo_obs;
 global N;
 global NU;
+global glo_gosa_obs;
+global glo_rand_size;
+global drive_cdc;
+obstacleR=0.5;%衝突判定用の障害物の半径
+global dt; 
+global po_cdc;
 global GOAL;
-Goal_tor=3.0;
+dt=0.1;%刻み時間[s]
+Goal_tor=0.5;
 %ロボットの力学モデル
 %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
 % 速度解像度[m/s],回頭速度解像度[rad/s]]
 Kinematic=[1.0,toRadian(20.0),0.2,toRadian(50.0),0.01,toRadian(1)];
 
 %評価関数のパラメータ [heading,dist,velocity,predictDT,path]
-evalParam=[0.1,0.2,0.1,3.0];
+evalParam=[0.1,0.2,0.1,2.0];
 
 %シミュレーション結果
 result.x=[];
 %tic;
 % Main loop
+
 for i=1:5000
 %DWAによる入力値の計算
-
 if i==1
     [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR,path);
+    me_gosa_obs = glo_gosa_obs;
 else
     [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obs,obstacleR,path);
+    delete(b);
+    delete(r);
 end
+
 x=f(x,u);%運動モデルによる移動
+
 %シミュレーション結果の保存
 result.x=[result.x; x'];
-
 start=[x(1),x(2)];
 s_x=[x(1);x(2)];
-drive=[drive s_x];
+drive_cdc=[drive_cdc s_x];
 
-if i==1
+if i==1 && wp_i == 1
     [me_gosa_obs]=gosa_hozon(glo_gosa_obs);
 end
+if isempty(me_gosa_obs(3,:)) == 0
+    me_gosa_obs(3,:)=[];
+end
 
-[cur_obs]=gosa_move(me_gosa_obs,start.',x(3),u(1,1));
-[ang_wp,sen_num,up_obs]=sensor_range(cur_obs,start.',x(3));
+[cur_obs]=gosa_move(me_gosa_obs,s_x,x(3),u(1,1));
+[ang_wp,sen_num,up_obs]=sensor_range(cur_obs,s_x,x(3));
 [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 ob=ob_round(up_obs,rand_size);
 obs=ob.';
-po(po_i)=potential(up_obs,start.',rand_size);
-sum_po=sum(po)/po_i;
+glo_obs(3,:) = 1;
+[~,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
+glo_obs(3,:) = [];
+glo_range_obs(3,:) = [];
+[up_obs]=gosamodel(glo_range_obs,s_x,ang_wp);
+up_obs(3,:) = [];
+%プロットポイントコメントアウト部分
+%  kill_line=cdc_obs_line(gosa_obs,up_obs);
+up_obs(3,:)=1;
+me_gosa_obs(3,:)=1;
+
+
+po_cdc(po_i)=potential(up_obs,s_x,rand_size);
+sum_po_cdc=sum(po_cdc)/po_i;
 po_i=po_i+1;
-currentFile = sprintf('./potential/potential_err-%d_%d_v%d.mat',N,GOAL,NU);
-save(currentFile,'drive','po','sum_po','path');
-%% プロット関数
-%{
+
+currentFile = sprintf('./potential/potential_cdc_err%d_%d_v%d.mat',N,GOAL,NU);
+save(currentFile,'glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
+%プロットポイントコメントアウト部分
+
 if i>1
     delete(d_q);
     delete(d_g);
     delete(d_tr);
-    delete(b);
+end
+
+for obs_i = 1:length(glo_obs(1,:))
+    r(obs_i)=en_plot_red(glo_obs(:,obs_i).',glo_rand_size(obs_i));
 end
 
 for j=1:length(up_obs(1,:))
   b(j)=en_plot_orange(up_obs(:,j).',rand_size(j));
 end
-%}
+
 
 %ゴール判定
 if norm(x(1:2)-goal')<Goal_tor
     disp('Arrive Goal!!');
     s=[x(1);x(2)];
-%     delete(b);
+    %プロットポイントコメントアウト部分
+      delete(b);
+      delete(r);
     break;
 end
-
+        
 if  i > 30 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-30,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-30,2)) < 1.0 
     obstacleR=0.1;
 end
@@ -437,15 +608,17 @@ end
 if  i > 150 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-150,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-150,2)) < 1.0 
     disp('Skip Waypoint');
     s=[x(1);x(2)];
-%     delete(b);
+    %プロットポイントコメントアウト部分
+      delete(b);
     break;
 end
 
-%% プロット関数
-%{
+%プロットポイントコメントアウト部分
+
 if i>1    
     delete(d_x);   
 end
+ 
     %====Animation====
  ArrowLength=0.5;%矢印の長さ
  %ロボット
@@ -464,12 +637,12 @@ end
     end
  end
  drawnow;
-%}
 
- pause(0.0001);
+
 end
 %toc
 end
+%movie2avi(mov,'movie.avi');
  
 
 function [u,trajDB]=DynamicWindowApproach(x,model,goal,evalParam,ob,R,path)
@@ -598,6 +771,8 @@ for i=1:length(path(:,1))
             Goal_path=[path(i+7,1),path(i+7,2)];
             break;
         end
+    else
+        Goal_path=[path(length(path(:,1)),1),path(length(path(:,1)),2)];
     end
 end
 pathTheta=toDegree(atan2(Goal_path(2)-x(2),Goal_path(1)-x(1)));
@@ -654,3 +829,4 @@ function degree = toDegree(radian)
 % radian to degree
 degree = radian/pi*180;
 end
+

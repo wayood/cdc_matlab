@@ -1,5 +1,10 @@
 function drive_cdc = DynamicWindowApproach_global(start,goal,obstacle)
-
+%-------------------%
+% start = [x,y]
+% goal = [x,y]
+% obstacle = [x...x
+%             y...y]
+%-------------------%
 x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
 obstacleR=0.2;%衝突判定用の障害物の半径
 global dt;
@@ -18,6 +23,7 @@ evalParam=[0.1,0.2,0.1,3.0];
 result.x=[];
 %tic;
 % Main loop
+
 for i=1:5000
 %DWAによる入力値の計算
 [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR);

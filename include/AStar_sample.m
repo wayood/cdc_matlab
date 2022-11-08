@@ -1,21 +1,13 @@
-%% Astar path planning
-function path = AStar(obstacle,start,goal)
+function path=AStar_sample(obstacle,start,goal)
 % A*法によって最短経路を探索するプログラム
 % 最短経路のパスの座標リストを返す
 
-% start = [x
-%          y];
+p.start = start.';
+p.goal = goal.';
 
-% goal = [x
-%         y];
-
-% obstacle = [x ... x
-%             y ... y];
-p.start = start;
-p.goal = goal;
-oct_path=[];%パス
+path=[];%パス
 %計算中ノード情報格納用[x,y,cost,px(親ノード),py(親ノード)] startノードを格納する
-open=[p.start(1,1) p.start(2,1) len(p.start.',p.goal.') p.start(1,1) p.start(2,1)];
+open=[p.start(1) p.start(2) h(p.start,p.goal) p.start(1) p.start(2)];
 close=[];%計算済みノード情報格納用
 
 %隣接ノードへの移動モデル これを変えることでロボットの移動を指定できる
@@ -24,41 +16,32 @@ next=MotionModel();
 findFlag=false;%ゴール発見フラグ
 
 while ~findFlag
-      %openにデータがない場合はパスが見つからなかった。
-      
-      if isempty(open)
-          disp('No path to goal!!'); 
-          path = [];
-          return; 
-      end
-
+      %openにデータがない場合はパスが見つからなかった。  
+      if isempty(open(:,1)) disp('No path to goal!!'); return; end
       %openなノードの中で最もコストが小さいものを選ぶ
       [Y,I] = sort(open(:,3));
       open=open(I,:);
-
+      
       %ゴール判定
-      if isSamePosi(open(1,1:2),p.goal.')
+      if isSamePosi(open(1,1:2),p.goal)
           disp('Find Goal!!');
           %ゴールのノードをCloseの先頭に移動
-          close=[open(1,:);close];
-          open(1,:)=[];
+          close=[open(1,:);close];open(1,:)=[];
           findFlag=true;
           break;
       end
-
+      
       for in=1:length(next(:,1))
           %隣接ノードの位置とコストの計算
           m=[open(1,1)+next(in,1) open(1,2)+next(in,2) open(1,3)];
-          m(3)=m(3)+1+len(m(1:2),p.goal.')-len(open(1,1:2),p.goal.');%コストの計算
+          m(3)=m(3)+next(in,3)+h(m(1:2),p.goal)-h(open(1,1:2),p.goal);%コストの計算
           
           %隣接ノードが障害物だったら次のノードを探す
-          if isObstacle(m,obstacle) 
-              continue; 
-          end
+          if isObstacle(m,obstacle) continue; end
           
           %openとcloseのリストの中にmが含まれるかを探索
           [flag, targetInd]=FindList(m,open,close);
-           
+
           if flag==1 %openリストにある場合
               if m(3)<open(targetInd,3)
                   open(targetInd,3)=m(3);
@@ -84,36 +67,39 @@ while ~findFlag
           close=[close; open(1,:)];
           open(1,:)=[];
       end
+      
       %パス探索のステップ動画
       %animation(open,close,p,obstacle);
+
 end
 
 %最短パスの座標リストを取得
-oct_path=GetPath(close,p.start.');
-path=PathSmoothing(oct_path);
+path=GetPath(close,p.start);
+
 end
+
+function result=h(a,b)
+%ヒューリスティック関数
+%ここでは二次元空間のa,bのノルム距離
+result=norm(a-b);
+
+end
+
 
 function result=isSamePosi(a,b)
 %2x1のベクトルが同じかどうかを判断する関数
 result=false;
-com_x=abs(a(1)-b(1));
-com_y=abs(a(2)-b(2));
-l = sqrt(com_x^2+com_y^2);
-if l < 0.5
+if a(1)-b(1) && a(2)==b(2)
     result=true;
 end
 end
 
-function l=len(a,b)
-l=norm(a-b);
-end
 
 function flag=isObstacle(m,obstacle)
 
-for io=1:length(obstacle(1,:))
-    if isSamePosi(obstacle(:,io).',m(1:2))
-        flag=true;
-        return;
+for io=1:length(obstacle(:,1))
+    if isSamePosi(obstacle(io,:),m(1:2))
+        flag=true;return;
     end
 end
 flag=false;%障害物ではない
@@ -121,12 +107,15 @@ end
 
 function next=MotionModel()
 %隣接ノードへの移動モデル これを変えることでロボットの移動を指定できる
-next=[0.3 0.3 0.3
-     0.3 0 0.3
-      0 0.3 0.3
-      -0.3 0 0.3
-      0 -0.3 0.3
-      -0.3 -0.3 0.3];
+% [x y cost]
+next=[0.1 0.1 0.1
+      0.1 0 0.1
+      0 0.1 0.1
+      -0.1 0 0.1
+      0 -0.1 0.1
+      -0.1 -0.1 0.1
+      -0.1 0.1 0.1
+      0.1 -0.1 0.1];
 end
 
 function path=GetPath(close,start)
@@ -176,44 +165,5 @@ function [flag, targetInd]=FindList(m,open,close)
         end
     end
     %どちらにも無かった
-    flag=3;
-    return;
-end
-
-function animation(open,close,p,obstacle)
-% 探索の様子を逐次的に表示する関数
-
-figure(1)
-if length(obstacle)>=1
-    plot(obstacle(:,1),obstacle(:,2),'om');hold on;
-end
-plot(p.start(1),p.start(2),'*r');hold on;
-plot(p.goal(1),p.goal(2),'*b');hold on;
-plot(open(:,1),open(:,2),'xr');hold on;
-plot(close(:,1),close(:,2),'xk');hold on;
-grid on;
-pause(0.001);
-
-end
-%% path 平滑化
-
-function optPath=PathSmoothing(path)
-optPath=path;%元のパスをコピー
-
-%平準化パラメータ
-alpha=0.5;
-beta=0.2;
-
-torelance=0.00001;%パスの変化量の閾値(変化量がこの値以下の時平滑化を終了)
-change=torelance;%パスの位置の変化量
-while change>=torelance 
-    change=0;%初期化
-    for ip=2:(length(path(:,1))-1) %始点と終点は固定
-        prePath=optPath(ip,:);%変化量計測用
-        optPath(ip,:)=optPath(ip,:)-alpha*(optPath(ip,:)-path(ip,:));
-        optPath(ip,:)=optPath(ip,:)-beta*(2*optPath(ip,:)-optPath(ip-1,:)-optPath(ip+1,:));
-        change=change+norm(optPath(ip,:)-prePath);
-    end
-end
-
+    flag=3;return;
 end
