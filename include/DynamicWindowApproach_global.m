@@ -1,4 +1,4 @@
-function drive_cdc = DynamicWindowApproach_global(start,goal,obstacle)
+function [drive_cdc,wp] = DynamicWindowApproach_global(start,goal,obstacle)
 %-------------------%
 % start = [x,y]
 % goal = [x,y]
@@ -56,7 +56,8 @@ end
 
 %ゴール判定
 if norm(x(1:2)-goal')<1.0
-    disp('Arrive Goal!!');
+    disp('Path Get!!');
+    wp = DouglasPeucker(drive_cdc,0.51);
     s=[x(1);x(2)];
     break;
 end
@@ -265,3 +266,4 @@ function degree = toDegree(radian)
 % radian to degree
 degree = radian/pi*180;
 end
+

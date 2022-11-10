@@ -18,6 +18,12 @@ global po_cdc;
 global lm_cur_1;
 global Path_analysis;
 global flag_add;
+global ax;
+global ButtonState;
+global curX;
+global curY;
+global add_path;
+add_path.State = 'wait';
 flag_add = 0;
 Path_analysis =[];
 lm_cur_1 = [];
@@ -27,6 +33,12 @@ drive_cdc=[];
 ang_wp = pi/2;
 range_base=20;
 i=1;
+ax = axes(fig);
+curX = [];         % 現在のLineのX座標
+curY = [];         % 現在のLineのY座標
+fig.WindowButtonDownFcn = @WindowButtonDownFcn_fig;
+fig.WindowButtonUpFcn = @WindowButtonUpFcn_fig;
+
 
 %% 障害物
 while 1
@@ -96,6 +108,7 @@ wp_add_array(1).wp = [];
 wp_add_array(1).count = [];
 wp_add_array(1).lm_add = [];
 wp_add_array(1).lm_add_range = [];
+ButtonState = false;
 
 %ナビゲーション
 while 1
@@ -104,13 +117,17 @@ while 1
         disp("Finish");
         break;
    end
+   
+   %{
    [x,y]=ginput;
     wp_s=[x.';
         y.'];
     wp = [wp wp_s];
+   %}
+
+    add_path = parfeval(backgroundPool,@DynamicWindowApproach_global,2,wp(:,end-1).',wp(:,end).',obs_list);
     
-    add_path = parfeval(@DynamicWindowApproach_global,1,wp(:,end-1).',wp(:,end).',obs_list);
-    value = fetchOutputs(add_path);
+    
    if flag == 1
        disp("Please add waypoint !!");
        
@@ -171,6 +188,26 @@ while 1
    end
    i=i+1;
    count=count+1;
+end
+
+%% callback関数の設定
+function WindowButtonDownFcn_fig(~,~)
+    global ax;
+    global ButtonState;
+    global curX;
+    global curY;
+    ButtonState = true; % 押下状態を保存
+
+    % マウスの位置の取得
+    curX = ax.CurrentPoint(1,1);
+    curY = ax.CurrentPoint(1,2);
+    plot(ax.CurrentPoint(1,1),ax.CurrentPoint(1,2),'g:o','MarkerSize',10);
+    hold on;
+end
+
+function WindowButtonUpFcn_fig(~,~)
+    global ButtonState;
+    ButtonState = false;
 end
 
 %% ポテンシャル場で評価
@@ -559,8 +596,7 @@ function [wp,start,ang,flag,b,up_obs,obs,rand_size] = DynamicWindowApproach_for_
     x=[start ang 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
     global glo_obs;
     global wp_init;
-    %global N;
-    %global NU;
+    global add_path;
     global glo_gosa_obs;
     global glo_rand_size;
     global drive_cdc;
@@ -595,7 +631,13 @@ function [wp,start,ang,flag,b,up_obs,obs,rand_size] = DynamicWindowApproach_for_
         else
             goal = wp(:,wp_i).';
         end
-
+        
+        disp(add_path.State);
+        if strcmp(add_path.State,'finished')
+            if isempty(add_path.Error)
+                value = fetchOutputs(add_path);
+            end
+        end
         %DWAによる入力値の計算
         if i==1
             [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR);
