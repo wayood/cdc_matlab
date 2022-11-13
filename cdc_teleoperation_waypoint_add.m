@@ -1,10 +1,10 @@
 %% 軌道補正アルゴリズム
 clear all;
+try
 fig = figure;
 fig.Color = 'white';
 %% 初期宣言
 p.start = [0;0];
-GOAL = [0;17];
 global glo_obs;
 global glo_gosa_obs;
 global glo_obs_init;
@@ -20,9 +20,10 @@ global Path_analysis;
 global flag_add;
 global ax;
 global ButtonState;
-global curX;
-global curY;
 global add_path;
+global obs_list;
+global flag_continue;
+flag_continue = 0;
 add_path.State = 'wait';
 flag_add = 0;
 Path_analysis =[];
@@ -34,8 +35,6 @@ ang_wp = pi/2;
 range_base=20;
 i=1;
 ax = axes(fig);
-curX = [];         % 現在のLineのX座標
-curY = [];         % 現在のLineのY座標
 fig.WindowButtonDownFcn = @WindowButtonDownFcn_fig;
 fig.WindowButtonUpFcn = @WindowButtonUpFcn_fig;
 
@@ -59,15 +58,13 @@ end
 
 [glo_gosa_obs]=gosamodel(glo_obs,p.start,ang_wp);%経路生成時のLM座標
 gosa_plot = graph_first(glo_gosa_obs,p,glo_rand_size);
-%plot(GOAL(1,1),GOAL(2,1),'g:o','MarkerSize',10);
-%hold on;
+
 
 %wpを手動で設定
 [x,y]=ginput;
 wp=[x.';
     y.'];
 global wp_init;
-wp = [wp GOAL];
 wp_init = wp;
 glo_obs_init = glo_obs;
 currentFile = sprintf('./wp/path_obstacle.mat');
@@ -109,10 +106,11 @@ wp_add_array(1).count = [];
 wp_add_array(1).lm_add = [];
 wp_add_array(1).lm_add_range = [];
 ButtonState = false;
+obs_list = obs.';
 
 %ナビゲーション
 while 1
-   [wp,p.start,ang,flag,kill_obs,current_obs,obs_list,current_rand_size] = DynamicWindowApproach_for_cdc(p.start.',obs.',i,wp,ang,wp_add_array); 
+   [wp,p.start,ang,flag,kill_obs,current_obs,current_rand_size] = DynamicWindowApproach_for_cdc(p.start.',obs_list,i,wp,ang,wp_add_array); 
    if i == length(wp(1,:))
         disp("Finish");
         break;
@@ -125,7 +123,7 @@ while 1
     wp = [wp wp_s];
    %}
 
-    add_path = parfeval(backgroundPool,@DynamicWindowApproach_global,2,wp(:,end-1).',wp(:,end).',obs_list);
+   %add_path = parfeval(backgroundPool,@DynamicWindowApproach_global,2,wp(:,end-1).',wp(:,end).',obs);
     
     
    if flag == 1
@@ -189,20 +187,23 @@ while 1
    i=i+1;
    count=count+1;
 end
+catch
+    cancel(add_path);
+end
 
 %% callback関数の設定
 function WindowButtonDownFcn_fig(~,~)
+
     global ax;
     global ButtonState;
-    global curX;
-    global curY;
+    global obs_list;
+    global add_path;
+    global wp_init;
     ButtonState = true; % 押下状態を保存
-
-    % マウスの位置の取得
-    curX = ax.CurrentPoint(1,1);
-    curY = ax.CurrentPoint(1,2);
+    add_path = parfeval(backgroundPool,@DynamicWindowApproach_global,2,wp_init(:,end).',[ax.CurrentPoint(1,1),ax.CurrentPoint(1,2)],obs_list);
     plot(ax.CurrentPoint(1,1),ax.CurrentPoint(1,2),'g:o','MarkerSize',10);
     hold on;
+
 end
 
 function WindowButtonUpFcn_fig(~,~)
@@ -273,6 +274,7 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
     glo_obs(2,:) = glo_obs_init(2,:) + glo_slip_y;
     up_obs(3,:)=1;
 end
+
 function R = correlation(one_wp,another_wp)
     N = length(another_wp(1,:)) - 1;
     one_x = linspace(one_wp(1,1),one_wp(1,end),N*100);
@@ -292,6 +294,7 @@ function R = correlation(one_wp,another_wp)
                another_y];
     R = corrcoef(one,another);
 end
+
 %% スリップ率導入
 function sliprate(ang,v)
  global dt; 
@@ -329,6 +332,7 @@ function [po,sum_po] = initial_potential(glo_gosa_obs,wp,glo_rand_size)
     currentFile = sprintf('./potential/potential.mat');
     save(currentFile,'po','sum_po');
 end
+
 %% 逐次的なアニメーション
 %逐次的に軌道補正を表示
 %{
@@ -591,7 +595,7 @@ end
 
 
 %% local plan
-function [wp,start,ang,flag,b,up_obs,obs,rand_size] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp,ang,wp_add_array)
+function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp,ang,wp_add_array)
 
     x=[start ang 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
     global glo_obs;
@@ -600,13 +604,13 @@ function [wp,start,ang,flag,b,up_obs,obs,rand_size] = DynamicWindowApproach_for_
     global glo_gosa_obs;
     global glo_rand_size;
     global drive_cdc;
-    obstacleR=0.5;%衝突判定用の障害物の半径
     global po_cdc;
-    global flag_add;
+    global obs_list;
+    global flag_continue;
     Hz = 2;
     Goal_tor = 0.5;
     flag = 0;
-    
+    obstacleR=0.5;%衝突判定用の障害物の半径
     
     %ロボットの力学モデル
     %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
@@ -621,7 +625,6 @@ function [wp,start,ang,flag,b,up_obs,obs,rand_size] = DynamicWindowApproach_for_
 
     % Main loop
     for i=1:5000
-        
        
         R = rem(i*0.5,Hz);
         if i == 1 && wp_i == 1 
@@ -633,17 +636,24 @@ function [wp,start,ang,flag,b,up_obs,obs,rand_size] = DynamicWindowApproach_for_
         end
         
         disp(add_path.State);
-        if strcmp(add_path.State,'finished')
+        if strcmp(add_path.State,'finished') && flag_continue == 0
             if isempty(add_path.Error)
-                value = fetchOutputs(add_path);
+                [add_path_stock,wp_add_stock] = fetchOutputs(add_path);
+                wp_init = [wp_init(:,1:end) wp_add_stock(:,2:end)];
+                disp('Path Add !!');
+                plot(add_path_stock(1,:),add_path_stock(2,:),'Color',[1, 0, 0, 0.2],'LineWidth',3);
+                hold on;
+                cancel(add_path);
+                flag_continue = 1;
             end
         end
         %DWAによる入力値の計算
         if i==1
-            [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR);
+            obs_list = obstacle;
+            [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obs_list,obstacleR);
             me_gosa_obs = glo_gosa_obs;
         else
-            [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obs,obstacleR);
+            [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obs_list,obstacleR);
             delete(d_q);
             delete(d_g);
             delete(d_tr);            
@@ -683,10 +693,10 @@ function [wp,start,ang,flag,b,up_obs,obs,rand_size] = DynamicWindowApproach_for_
         % 障害物の座標格納
         [~,cols] = size(up_obs);
         if cols < 2 && up_obs(2,1) == 0
-            obs = [];
+            obs_list = [];
         else
             ob=ob_round(up_obs,rand_size);
-            obs=ob.';
+            obs_list=ob.';
             
             %LMの変化量を図示
             L = lm_line(up_obs,gosa_obs);

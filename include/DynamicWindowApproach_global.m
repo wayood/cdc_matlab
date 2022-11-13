@@ -1,96 +1,78 @@
 function [drive_cdc,wp] = DynamicWindowApproach_global(start,goal,obstacle)
-%-------------------%
+
+%------------------------------
+%                              
 % start = [x,y]
 % goal = [x,y]
-% obstacle = [x...x
-%             y...y]
-%-------------------%
-x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
-obstacleR=0.2;%衝突判定用の障害物の半径
+%
+% obstacle = [x y
+%             x y]
+%
+% wp = [x...x
+%       y...y]
+%
+% drive_cdc = [x...x
+%              y...y]
+%-----------------------------
+
+
 global dt;
-dt=0.1;%刻み時間[s]
-drive_cdc=[];
-
-%ロボットの力学モデル
-%[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
-% 速度解像度[m/s],回頭速度解像度[rad/s]]
-Kinematic=[1.0,toRadian(20.0),0.2,toRadian(50.0),0.01,toRadian(1)];
-
-%評価関数のパラメータ [heading,dist,velocity,predictDT,path]
-evalParam=[0.1,0.2,0.1,3.0];
-
-%シミュレーション結果
-result.x=[];
-%tic;
-% Main loop
-
-for i=1:5000
-%DWAによる入力値の計算
-[u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR);
-x=f(x,u);%運動モデルによる移動
-
-%シミュレーション結果の保存
-result.x=[result.x; x'];
-s_x=[x(1);x(2)];
-drive_cdc=[drive_cdc s_x];
-
-
-if i>20
+%while 1
+    x=[start pi/2 0 0]';%ロボットの初期状態[x(m),y(m),yaw(Rad),v(m/s),ω(rad/s)]
+    obstacleR=0.05;%衝突判定用の障害物の半径
     
-    V_x=var(drive_cdc(1,[i-19 i]));
-    V_y=var(drive_cdc(2,[i-19 i]));
-
-    if V_x < 0.1 && V_y <0.1
-        disp("Fuck");
-        break;
-    end
-end
-%{
-if i>1
-    delete(d_q);
-    delete(d_g);
-    delete(d_tr);
-end
-%}
-
-
-%ゴール判定
-if norm(x(1:2)-goal')<1.0
-    disp('Path Get!!');
-    wp = DouglasPeucker(drive_cdc,0.51);
-    s=[x(1);x(2)];
-    break;
-end
-
-%{
-if i>1    
-    delete(d_x);   
-end
+    dt=0.1;%刻み時間[s]
+    drive_cdc=[];
+    flag = 0;
+    %ロボットの力学モデル
+    %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
+    % 速度解像度[m/s],回頭速度解像度[rad/s]]
+    Kinematic=[1.0,toRadian(20.0),0.2,toRadian(50.0),0.01,toRadian(1)];
     
-    %====Animation====
- ArrowLength=0.5;%矢印の長さ
- %ロボット
- d_q=quiver(x(1),x(2),ArrowLength*cos(x(3)),ArrowLength*sin(x(3)),'ok');
- hold on;
- d_x=plot(result.x(:,1),result.x(:,2),'-b');
- hold on;
- d_g=plot(goal(1),goal(2),'*r');
- hold on;
- %探索軌跡表示
- if ~isempty(traj)
-    for it=1:length(traj(:,1))/5
-       ind=1+(it-1)*5;
-       d_tr(it)=plot(traj(ind,:),traj(ind+1,:),'-g');
-       hold on;
+    %評価関数のパラメータ [heading,dist,velocity,predictDT,path]
+    evalParam=[0.1,0.2,0.1,3.0];
+    
+    %シミュレーション結果
+    result.x=[];
+    % Main loop
+    
+    for i=1:5000
+        %DWAによる入力値の計算
+        [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obstacle,obstacleR);
+        x=f(x,u);%運動モデルによる移動
+        
+        %シミュレーション結果の保存
+        result.x=[result.x; x'];
+        s_x=[x(1);x(2)];
+        drive_cdc=[drive_cdc s_x];
+        
+        
+        if i>20
+            
+            L = norm(drive_cdc(:,i).'-drive_cdc(:,i-19));
+            if L < 0.2
+                disp("Fuck");
+                break;
+            end
+        end
+        
+        
+        %ゴール判定
+        if norm(x(1:2)-goal')<0.5
+            disp('Path Get!!');
+            wp = DouglasPeucker(drive_cdc,0.51);
+            s=[x(1);x(2)];
+            flag = 1;
+            break;
+        end
+    
     end
- end
-%}
-
- %drawnow;
+    %if flag == 1
+    %    break;
+    %end
+        
+%end
 end
-%toc
-end
-%movie2avi(mov,'movie.avi');
  
 
 function [u,trajDB]=DynamicWindowApproach(x,model,goal,evalParam,ob,R)
