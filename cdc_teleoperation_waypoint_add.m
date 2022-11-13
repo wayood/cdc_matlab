@@ -186,6 +186,7 @@ while 1
    end
    i=i+1;
    count=count+1;
+
 end
 catch
     cancel(add_path);
@@ -209,6 +210,7 @@ end
 function WindowButtonUpFcn_fig(~,~)
     global ButtonState;
     ButtonState = false;
+
 end
 
 %% ポテンシャル場で評価

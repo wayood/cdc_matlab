@@ -41,7 +41,7 @@ while 1
     end    
 end
 
-[glo_gosa_obs]=gosamodel(glo_obs,p.start);%経路生成時のLM座標
+[glo_gosa_obs]=gosamodel(glo_obs,p.start,ang_wp);%経路生成時のLM座標
 gosa_plot = graph(glo_gosa_obs,p,glo_rand_size);
 plot(GOAL(1,1),GOAL(2,1),'g:o','MarkerSize',10);
 hold on;
@@ -99,7 +99,7 @@ while 1
    
    i=i+1;
    count=count+1;
-   pause(0.001);
+%    pause(0.001);
 end
 
 %% ポテンシャル場で評価
@@ -127,7 +127,7 @@ end
 %% 誤差モデル計算　
 %距離による関係性を考えた。
 %これはDEMのステレオデータによる誤差を主に考えた。
-function [up_obs]=gosamodel(obs,start)
+function [up_obs]=gosamodel(obs,start,ang)
  for i=1:length(obs(1,:))
     [~,leng] = cart2pol(obs(1,i),obs(2,i));
     r(i)=len(obs(:,i).',start.');
@@ -138,13 +138,15 @@ function [up_obs]=gosamodel(obs,start)
     y_ran=-0.01+0.02*rand;
     if leng >= 20
         l=18.5*10^-2*20^2*0.01;
-        up_obs(1,i)=obs(1,i)+x_ran;
-        up_obs(2,i)=obs(2,i)+l+y_ran;
+        [x_error,y_error] = pol2cart(ang,l);
+        up_obs(1,i)=obs(1,i)+x_error+x_ran;
+        up_obs(2,i)=obs(2,i)+y_error+y_ran;
         continue;
     end
     l=18.5*10^-2*r(i)^2*0.01;
-    up_obs(1,i)=obs(1,i)+x_ran;
-    up_obs(2,i)=obs(2,i)+l+y_ran;
+    [x_error,y_error] = pol2cart(ang,l);
+    up_obs(1,i)=obs(1,i)+x_error+x_ran;
+    up_obs(2,i)=obs(2,i)+y_error+y_ran;
 end
     up_obs(3,:)=1;
 end
@@ -318,8 +320,9 @@ function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
    if obs(3,:)==1
        obs(3,:)=[];
    end
-   
-      if ang > pi
+
+   if ang > pi
+
        ang_pol = ang - 2*pi;
    elseif ang > 2*pi
        r = rem(ang,2*pi);
@@ -349,9 +352,10 @@ function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
        range_minus_max = -2;
        range_minus_min = -1;
    end
-   
+
    for i=1:length(obs(1,:))
         [ang_obs,range_length] = cart2pol(obs(1,i)-start(1,1),obs(2,i)-start(2,1)); 
+
         if ang_obs>range_plus_min && ang_obs<range_plus_max && range_length<range_base
             sen_num(i)=0;
         elseif ang_obs>range_minus_min && ang_obs<range_minus_max && range_length<range_base
@@ -441,7 +445,7 @@ function [wp,start,ang,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp
     obstacleR=0.5;%衝突判定用の障害物の半径
     global po_cdc;
     Hz = 2;
-    Goal_tor=0.2;
+    Goal_tor = 0.4;
     
     %ロボットの力学モデル
     %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
@@ -449,7 +453,7 @@ function [wp,start,ang,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp
     Kinematic=[1.0,toRadian(20.0),0.2,toRadian(50.0),0.01,toRadian(1)];
 
     %評価関数のパラメータ [heading,dist,velocity,predictDT]
-    evalParam=[0.1,0.2,0.1,3.0];
+    evalParam=[0.5,0.5,0.2,2.0];
 
     %シミュレーション結果
     result.x=[];
@@ -493,7 +497,7 @@ function [wp,start,ang,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp
         [~,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
         glo_obs(3,:) = [];
         glo_range_obs(3,:) = [];
-        [up_obs]=gosamodel(glo_range_obs,start);
+        [up_obs]=gosamodel(glo_range_obs,start,ang_wp);
         up_obs(3,:) = [];
         
         % 障害物の座標格納
@@ -510,8 +514,9 @@ function [wp,start,ang,b] = DynamicWindowApproach_for_cdc(start,obstacle,wp_i,wp
         sum_po_cdc=sum(po_cdc)/length(po_cdc);
         currentFile = sprintf('./potential/potential_cdc.mat');
         save(currentFile,'glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
-
-        if R == 0
+        
+        [~,Cols] = size(up_obs);
+        if R == 0 && Cols > 2
             [wp,k,mat_er,plan_er]=correction(up_obs,gosa_obs);
             if flag == 1
                 ang = x(3);
@@ -705,6 +710,7 @@ end
 
 function heading=CalcHeadingEval(x,goal)
 %headingの評価関数を計算する関数
+
 if x(3) > 2*pi
        ang = rem(x(3),2*pi);
 else
@@ -717,6 +723,7 @@ if goalrad < 0
 else
     goalRad = goalrad;
 end
+
 goalTheta=toDegree(goalRad);%ゴールの方位
 
 if goalTheta > 270 && theta + 360 - goalTheta < 180 ||  theta > 270 && goalTheta + 360 - theta < 90
