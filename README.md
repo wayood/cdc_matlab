@@ -12,7 +12,9 @@ middle_planner_cdc_ex.m -> 軌道補正入れたバージョン、あとは上�
 DouglasPeuker.m -> 折れ線近似による補正ポイントの制御  
 plot_potential_cdc.m -> ポテンシャル場で安全性を評価  
 Potential_Field.m -> ポテンシャル場を生成  
-cdc_teleoperation -> WPを人が指定し,その間を機械計算で走行する.  
+cdc_teleoperation.m -> WPを人が指定し,その間を機械計算で走行する.
+cdc_teleoperation_waypoint_add.m -> ボロノイ図で破綻検知後やローカルミニマムに対して解決中
+cdc_teleoperation_autonomous.m -> 破綻検知後のボロノイ図を自律軌道計画として導入  
 ```
 # Plan proccessing
 評価の距離トレードオフを議論　

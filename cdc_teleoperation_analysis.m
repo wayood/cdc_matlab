@@ -357,38 +357,57 @@ function [rand_size,cur_gosa_obs]=sensor_judge(gosa_obs,sen_num,glo_rand_size)
 end
 
 %% 視野角を考慮
-function [ang_wp,sen_num,sen_obs]=sensor_range(obs,start,ang)
+function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
    %視野の射程距離
    range_base=20;
 
    if obs(3,:)==1
        obs(3,:)=[];
    end
+   if ang > pi
+       ang_pol = ang - 2*pi;
+   elseif ang > 2*pi
+       r = rem(ang,2*pi);
+       if r > pi
+           ang_pol = r - 2*pi;
+       else
+           ang_pol = r;
+       end
+   else
+       ang_pol = ang;
+   end
+   range_min = ang_pol-(11*pi/36);
+   range_max = ang_pol+(11*pi/36);
+   if abs(range_min) > pi && ang_pol < 0
+       range_plus_min = 2*pi - abs(range_min);
+       range_plus_max = pi;
+       range_minus_max = range_max;
+       range_minus_min = -pi;    
+   elseif range_max > pi && ang_pol > 0
+       range_plus_min = range_min;
+       range_plus_max = pi;
+       range_minus_max = range_max - 2*pi;
+       range_minus_min = -pi;
+   else
+       range_plus_min = range_min;
+       range_plus_max = range_max;
+       range_minus_max = -2;
+       range_minus_min = -1;
+   end
    
-   ang_90=pi/2-ang;
-   b=start(2,1)-start(1,1)*tan(ang_90);
    for i=1:length(obs(1,:))
-     [ang_wp,range_max,range_min,range_s,range_ln]=siya(obs(:,i),start,ang);
-    
-     if range_s>range_min && range_s<range_max && range_ln<range_base
-        sen_num(i)=0;
-     else
-        obs(:,i)=[-1;-1];
-        sen_num(i)=1;
-     end
+        [ang_obs,range_length] = cart2pol(obs(1,i)-start(1,1),obs(2,i)-start(2,1)); 
+        if ang_obs>range_plus_min && ang_obs<range_plus_max && range_length<range_base
+            sen_num(i)=0;
+        elseif ang_obs>range_minus_min && ang_obs<range_minus_max && range_length<range_base
+            sen_num(i)=0;
+        else
+            obs(:,i)=[-1;-1];
+            sen_num(i)=1;
+        end
    end
       idx = obs(1,:)== -1 & obs(2,:) == -1;
       sen_obs = obs(:,~idx);
-end
-
-%% 視野角計算
-function   [ang,range_wpbase_max,range_wpbase_min,range_s,range_l]=siya(obs,start,ang)
-   range_wpbase_min=ang-(11*pi/36);
-   range_wpbase_max=ang+(11*pi/36);
-   range_l=sqrt((obs(1,1)-start(1,1))^2+(obs(2,1)-start(2,1))^2);
-   range_x=obs(1,1)-start(1,1);
-   range_y=obs(2,1)-start(2,1);
-   range_s=atan2(range_y,range_x);
 end
 
 %% 二点間のプロット
@@ -732,16 +751,25 @@ end
 
 function heading=CalcHeadingEval(x,goal)
 %headingの評価関数を計算する関数
-
-theta=toDegree(x(3));%ロボットの方位
-goalTheta=toDegree(atan2(goal(2)-x(2),goal(1)-x(1)));%ゴールの方位
-
-if goalTheta>theta
-    targetTheta=goalTheta-theta;%ゴールまでの方位差分[deg]
+if x(3) > 2*pi
+       ang = rem(x(3),2*pi);
 else
-    targetTheta=theta-goalTheta;%ゴールまでの方位差分[deg]
+    ang = x(3);
 end
+theta=toDegree(ang);%ロボットの方位
+goalrad = atan2(goal(2)-x(2),goal(1)-x(1));
+if goalrad < 0
+    goalRad = 2*pi + goalrad;
+else
+    goalRad = goalrad;
+end
+goalTheta=toDegree(goalRad);%ゴールの方位
 
+if goalTheta > 270 && theta + 360 - goalTheta < 180 ||  theta > 270 && goalTheta + 360 - theta < 90
+    targetTheta = abs(theta + 360 - goalTheta);    
+else
+    targetTheta = abs(theta - goalTheta);    
+end
 heading=180-targetTheta;
 end
 
@@ -770,8 +798,9 @@ F = [1 0 0 0 0
      0 0 0 0 0
      0 0 0 0 0];
  
-B = [dt*cos(x(3)) 0
-    dt*sin(x(3)) 0
+[X,Y] = pol2cart(x(3),dt); 
+B = [X 0
+    Y 0
     0 dt
     1 0
     0 1];
