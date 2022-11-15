@@ -1,14 +1,19 @@
 %% 軌道補正アルゴリズム
 clear all;
-try
+%try
 fig = figure;
 fig.Color = 'white';
 %% 初期宣言
 p.start = [0;0];
+global range_base;
 global glo_obs;
 global glo_gosa_obs;
 global glo_obs_init;
 global glo_rand_size;
+global glo_add_obs_init;
+global add_obs_init;
+global ground_add_obs;
+global add_obs_rand_size;
 global drive_cdc;
 global dt;
 global slip;
@@ -34,6 +39,7 @@ drive_cdc=[];
 ang_wp = pi/2;
 range_base=20;
 i=1;
+j=1;
 ax = axes(fig);
 fig.WindowButtonDownFcn = @WindowButtonDownFcn_fig;
 fig.WindowButtonUpFcn = @WindowButtonUpFcn_fig;
@@ -45,18 +51,26 @@ while 1
     ran_y=100*rand;
     [ang,l] = cart2pol(ran_x,ran_y);   
     
-    if l <= range_base + 10 && (7*pi)/36 <= ang && ang <= (29*pi)/36
+    if l <= range_base  && (7*pi)/36 <= ang && ang <= (29*pi)/36
         glo_rand_size(i)=0.3+0.5*rand;
         glo_obs(1,i)=ran_x;
         glo_obs(2,i)=ran_y;
-        if i == 75
-            break;
-        end
         i=i+1;
-    end    
+    elseif (7*pi)/36 <= ang && ang <= (29*pi)/36
+        add_obs_rand_size(j) = 0.3+0.5*rand;
+        ground_add_obs(:,j) = [ran_x;ran_y];
+        j=j+1;
+    end
+
+    if i >= 75 && j >= 75
+        break;
+    end
 end
 
 [glo_gosa_obs]=gosamodel(glo_obs,p.start,ang_wp);%経路生成時のLM座標
+[add_obs_init]=gosamodel(ground_add_obs,p.start,ang_wp);
+glo_add_obs_init = ground_add_obs;
+
 gosa_plot = graph_first(glo_gosa_obs,p,glo_rand_size);
 
 
@@ -93,7 +107,7 @@ glo_start=p.start;
 %初期化
 i=1;
 po_cdc=[];
-slip = 70;
+slip = 50;
 dt = 0.1;
 count = 1;
 elapsed_count = 1;
@@ -134,7 +148,7 @@ while 1
        delete(two_init);
        %delete(wp_kill);
        
-       current_obs(3,:) = 1;
+       
        tic
        [rrt_path] =  RRTstar3D(p.start,wp(:,i),current_obs,current_rand_size);
        elapsedTime_astar(elapsed_count) = toc;
@@ -164,13 +178,11 @@ while 1
        wp_add_array(wp_add_count).count = i;
        lm_add_array(1,:) = glo_gosa_obs(1,:);
        lm_add_array(2,:) = glo_gosa_obs(2,:);
-       lm_add_array(3,:) = 1;
        wp_add_array(wp_add_count).lm_add = lm_add_array;
        
        i = i-1;
-       glo_gosa_obs(3,:) = [];
+       
        obs = ob_round(glo_gosa_obs,glo_rand_size);
-
        delete(kill_obs);
      
        for plt_cou = 1:length(glo_gosa_obs(1,:))
@@ -180,7 +192,6 @@ while 1
        end
        
        wp_add_count = wp_add_count + 1;
-       glo_gosa_obs(3,:) = 1;
        wp_init = wp;
        
    end
@@ -188,10 +199,11 @@ while 1
    count=count+1;
 
 end
+%{
 catch
     cancel(add_path);
 end
-
+%}
 %% callback関数の設定
 function WindowButtonDownFcn_fig(~,~)
 
@@ -228,7 +240,6 @@ function po=potential(obs,move,size)
 end
 
 function kill = lm_line(LM_current,LM_first)
-    LM_first(3,:) = [];
     for i = 1:length(LM_first(1,:))
         LM = [LM_current(:,i) LM_first(:,i)];
         kill(i)=plot(LM(1,:),LM(2,:),'-g','LineWidth',1.5);
@@ -239,6 +250,7 @@ end
 %距離による関係性を考えた。
 %これはDEMのステレオデータによる誤差を主に考えた。
 function [up_obs]=gosamodel(obs,start,ang)
+ global range_base;
  for i=1:length(obs(1,:))
     [~,leng] = cart2pol(obs(1,i),obs(2,i));
     r(i)=len(obs(:,i).',start.');
@@ -247,8 +259,8 @@ function [up_obs]=gosamodel(obs,start,ang)
     end
     x_ran=-0.01+0.02*rand; %キャリブレーションや分解能での誤差を考える
     y_ran=-0.01+0.02*rand;
-    if leng >= 20
-        l=18.5*10^-2*20^2*0.01;
+    if leng >= range_base
+        l=18.5*10^-2*range_base^2*0.01;
         [x_error,y_error] = pol2cart(ang,l);
         up_obs(1,i)=obs(1,i)+x_error+x_ran;
         up_obs(2,i)=obs(2,i)+y_error+y_ran;
@@ -258,8 +270,7 @@ function [up_obs]=gosamodel(obs,start,ang)
     [x_error,y_error] = pol2cart(ang,l);
     up_obs(1,i)=obs(1,i)+x_error+x_ran;
     up_obs(2,i)=obs(2,i)+y_error+y_ran;
-end
-    up_obs(3,:)=1;
+ end
 end
 
 %誤差をロボット進行方向に考えて表示
@@ -433,7 +444,7 @@ function [matrix_error,matrix_timespace_error,flag]=A_matrix(A,LM_current,LM_fir
     flag = 0;
     
     if matrix_error > 1.0 || matrix_timespace_error > 0.3
-        flag =1;
+        flag =0;
     end
     
     if h == 3
@@ -470,11 +481,11 @@ end
 function [rand_size,cur_gosa_obs]=sensor_judge(gosa_obs,sen_num,glo_rand_size)
    for i=1:length(gosa_obs(1,:))
       if sen_num(i)==1
-          gosa_obs(:,i)=[-1;-1;-1];
+          gosa_obs(:,i)=[-1;-1];
           glo_rand_size(i)=0;
       end
    end
-    idx = gosa_obs(1,:)==-1 & gosa_obs(2,:) == -1 & gosa_obs(3,:)==-1;
+    idx = gosa_obs(1,:)==-1 & gosa_obs(2,:) == -1;
     idy = glo_rand_size(1,:)==0;
     rand_size=glo_rand_size(~idy);
     cur_gosa_obs=gosa_obs(:,~idx);
@@ -483,7 +494,7 @@ end
 %% 視野角を考慮
 function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
    %視野の射程距離
-   range_base=20;
+   global range_base;
     [rows,~] = size(obs);
    if rows == 3
        obs(3,:)=[];
@@ -573,14 +584,12 @@ end
 function [up_obs]=gosa_hozon(obs)
  global glo_slip_x;
  global glo_slip_y;
- if obs(3,:) == 1
-     obs(3,:)=[];
- end
+ 
  for i=1:length(obs(1,:))
     up_obs(1,i)=obs(1,i)+glo_slip_x;
     up_obs(2,i)=obs(2,i)+glo_slip_y;
  end
- up_obs(3,:)=1;
+ 
 end
 
 %% 障害物の円を座標格納
@@ -609,6 +618,10 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
     global po_cdc;
     global obs_list;
     global flag_continue;
+    global glo_add_obs_init;
+    global ground_add_obs;
+    global add_obs_rand_size;
+    global add_obs_init;
     Hz = 2;
     Goal_tor = 0.5;
     flag = 0;
@@ -632,12 +645,12 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         if i == 1 && wp_i == 1 
             goal = wp_init(:,wp_i).';
             wp = wp_init;
-            [me_gosa_obs]=gosa_hozon(glo_gosa_obs);
+            [obs_init_stock]=gosa_hozon(glo_gosa_obs);
+            [add_obs_init_stock]=gosa_hozon(glo_add_obs_init);
         else
             goal = wp(:,wp_i).';
         end
         
-        disp(add_path.State);
         if strcmp(add_path.State,'finished') && flag_continue == 0
             if isempty(add_path.Error)
                 [add_path_stock,wp_add_stock] = fetchOutputs(add_path);
@@ -653,7 +666,8 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         if i==1
             obs_list = obstacle;
             [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obs_list,obstacleR);
-            me_gosa_obs = glo_gosa_obs;
+            obs_init_stock = glo_gosa_obs;
+            add_obs_init_stock = add_obs_init;
         else
             [u,traj]=DynamicWindowApproach(x,Kinematic,goal,evalParam,obs_list,obstacleR);
             delete(d_q);
@@ -673,20 +687,30 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         drive_cdc=[drive_cdc start];
 
         % 誤差の検出と推定
-        [cur_obs]=gosa_move(me_gosa_obs,start,x(3),u(1,1));
-        [ang_wp,sen_num,up_obs]=sensor_range(cur_obs,start,x(3));
+        [cur_obs]=gosa_move(obs_init_stock,start,x(3),u(1,1));
+        [cur_add_obs]=gosa_move(add_obs_init_stock,start,x(3),u(1,1));
+
+        [ang_wp,sen_num,~]=sensor_range(cur_obs,start,x(3));
+        [~,select_add_num,~]=sensor_range(cur_add_obs,start,x(3));
+
         [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
+
         if wp_add_array(1).count  ~= 0
             for add_count = 1:length(wp_add_array)
                 [~,wp_add_array(add_count).lm_add_range]=sensor_judge(wp_add_array(add_count).lm_add,sen_num,glo_rand_size);
             end
         end
-        glo_obs(3,:) = 1;
+        
+        if find(select_add_num) ~= 1
+            [add_range_size,add_gosa_obs]=sensor_judge(glo_add_obs_init,select_add_num,add_obs_rand_size);
+            [~,add_range_ground_obs]=sensor_judge(ground_add_obs,select_add_num,add_obs_rand_size);
+            [current_add_obs]=gosamodel(add_range_ground_obs,start,ang_wp);
+        end
+
         [~,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
-        glo_obs(3,:) = [];
-        glo_range_obs(3,:) = [];
+
         [up_obs]=gosamodel(glo_range_obs,start,ang_wp);
-        up_obs(3,:) = [];
+     
         
         for obs_i = 1:length(glo_obs(1,:))
             r(obs_i)=en_plot_red(glo_obs(:,obs_i).',glo_rand_size(obs_i));
