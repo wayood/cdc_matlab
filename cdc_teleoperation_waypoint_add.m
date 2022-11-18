@@ -28,6 +28,14 @@ global ButtonState;
 global add_path;
 global obs_list;
 global flag_continue;
+global wp_add;
+global lm_add_stock;
+global lm_first_stock;
+global add_count;
+add_count = 0;
+lm_first_stock.array = [];
+lm_add_stock.array = [];
+wp_add(1).array = [];
 flag_continue = 0;
 add_path.State = 'wait';
 flag_add = 0;
@@ -212,8 +220,14 @@ function WindowButtonDownFcn_fig(~,~)
     global obs_list;
     global add_path;
     global wp_init;
+    global flag_continue;
+    global add_count;
     ButtonState = true; % 押下状態を保存
     add_path = parfeval(backgroundPool,@DynamicWindowApproach_global,2,wp_init(:,end).',[ax.CurrentPoint(1,1),ax.CurrentPoint(1,2)],obs_list);
+    if flag_continue == 1
+        flag_continue = 0;
+    end
+    add_count = add_count + 1;
     plot(ax.CurrentPoint(1,1),ax.CurrentPoint(1,2),'g:o','MarkerSize',10);
     hold on;
 
@@ -285,7 +299,6 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
     up_obs(2,:)=obs(2,:)+glo_slip_y;
     glo_obs(1,:) = glo_obs_init(1,:) + glo_slip_x;
     glo_obs(2,:) = glo_obs_init(2,:) + glo_slip_y;
-    up_obs(3,:)=1;
 end
 
 function R = correlation(one_wp,another_wp)
@@ -370,22 +383,17 @@ l=norm(a-b);
 end
 
 %% 軌道補正計算
-function [wp_new,k,mat_er,plan_er,flag]=compensation(lm_current,lm_first,wp_add_array)
+function [wp_new,k,mat_er,plan_er,flag]=compensation(lm_current,lm_first,lm_add_current,lm_add_init)
     global wp_init;
     global lm_cur_1;
+    global wp_add;
+
+    lm_current(3,:) = 1;
+    lm_first(3,:) = 1;
+    lm_add_current.array(3,:) = 1;
+    lm_add_init.array(3,:) = 1;
     
-    [h,~]=size(lm_current);
-    if h == 2
-        lm_current(3,:) = 1;
-    end
-    
-    [h,~]=size(lm_first);
-    
-    if h == 2
-        lm_first(3,:) = 1;
-    end
-    
-    wp_new_add(1).wp = [];
+
     A=lm_current*pinv(lm_first);
     wp_init(3,:)=1; 
   
@@ -402,17 +410,15 @@ function [wp_new,k,mat_er,plan_er,flag]=compensation(lm_current,lm_first,wp_add_
     wp_new=A*wp_init;
     wp_init(3,:) = [];
     
-    %{
-    if wp_add_array(1).count  ~= 0
-        for add_count = 1:length(wp_add_array)
-            A_add = lm_current*pinv(wp_add_array(add_count).lm_add_range);
-            wp_add_array(add_count).wp(3,:) = 1;
-            wp_new_add(add_count).wp = A_add * wp_add_array(add_count).wp;
-            wp_new(1,wp_add_array(add_count).count:length(wp_new_add(add_count).wp(1,:))+wp_add_array(add_count).count-1) = wp_new_add(add_count).wp(1,:);
-            wp_new(2,wp_add_array(add_count).count:length(wp_new_add(add_count).wp(1,:))+wp_add_array(add_count).count-1) = wp_new_add(add_count).wp(2,:);
+    if isempty(wp_add(1).array) == 0
+        wp_add.array(3,:) = 1;
+        for i = 1:length(lm_add_current)
+            A_add = lm_add_current(i).array*pinv(lm_add_init(i).array);
+            wp_add_new(i).array = A_add*wp_add(i).array;
+            wp_new = [wp_new wp_add_new(i).array];
         end
     end
-    %}
+   
     wp_new(3,:)=[];
     k=cond(A,2);
 end
@@ -618,10 +624,15 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
     global po_cdc;
     global obs_list;
     global flag_continue;
+    global add_count;
     global glo_add_obs_init;
     global ground_add_obs;
     global add_obs_rand_size;
     global add_obs_init;
+    global flag_add;
+    global wp_add;
+    global lm_add_stock;
+    global lm_first_stock;
     Hz = 2;
     Goal_tor = 0.5;
     flag = 0;
@@ -637,10 +648,14 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
 
     %シミュレーション結果
     result.x=[];
-
+    
     % Main loop
     for i=1:5000
-       
+        first_gosa_obs = [];
+        current_init_obs = [];
+        add_gosa_obs = [];
+        current_add_obs = [];
+
         R = rem(i*0.5,Hz);
         if i == 1 && wp_i == 1 
             goal = wp_init(:,wp_i).';
@@ -651,17 +666,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
             goal = wp(:,wp_i).';
         end
         
-        if strcmp(add_path.State,'finished') && flag_continue == 0
-            if isempty(add_path.Error)
-                [add_path_stock,wp_add_stock] = fetchOutputs(add_path);
-                wp_init = [wp_init(:,1:end) wp_add_stock(:,2:end)];
-                disp('Path Add !!');
-                plot(add_path_stock(1,:),add_path_stock(2,:),'Color',[1, 0, 0, 0.2],'LineWidth',3);
-                hold on;
-                cancel(add_path);
-                flag_continue = 1;
-            end
-        end
+        
         %DWAによる入力値の計算
         if i==1
             obs_list = obstacle;
@@ -695,23 +700,86 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
 
         [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 
-        if wp_add_array(1).count  ~= 0
-            for add_count = 1:length(wp_add_array)
-                [~,wp_add_array(add_count).lm_add_range]=sensor_judge(wp_add_array(add_count).lm_add,sen_num,glo_rand_size);
+
+            %add時のlm初期状態と追加状態で登録
+        if flag_add == 0 && strcmp(add_path.State,'running')  
+            if find(sen_num) ~= 1
+                lm_first_stock(add_count).array = cur_obs;
             end
         end
-        
-        if find(select_add_num) ~= 1
-            [add_range_size,add_gosa_obs]=sensor_judge(glo_add_obs_init,select_add_num,add_obs_rand_size);
-            [~,add_range_ground_obs]=sensor_judge(ground_add_obs,select_add_num,add_obs_rand_size);
-            [current_add_obs]=gosamodel(add_range_ground_obs,start,ang_wp);
+
+        if flag_add == 0 & find(select_add_num) ~= 1  
+            if strcmp(add_path.State,'running')
+                lm_add_stock(add_count).array = cur_add_obs;
+            end
         end
 
-        [~,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
+        if isempty(find(lm_add_stock(1).array,1)) == 0 || isempty(find(lm_first_stock(1).array,1)) == 0
+            flag_add = 1;
+            if isempty(lm_first_stock(add_count)) == 1
+                lm_first_stock(add_count).array = zeros(2,length(glo_gosa_obs(1,:)));
+            elseif isempty(lm_add_stock(add_count)) == 1
+                lm_add_stock(add_count).array = zeros(2,length(add_obs_init(1,:)));
+            end
+        end
+        if isempty(find(lm_add_stock(1).array,1)) == 0
+            for i = 1:add_count
+                if isempty(find(lm_add_stock(i).array,1)) == 1
+                    add_gosa_obs(i).array = zeros(2,length(add_obs_init(1,:)));
+                    current_add_obs(i).array = zeros(2,length(add_obs_init(1,:)));
+                else
+                    [add_range_size,add_gosa_obs(i).array]=sensor_judge(lm_add_stock(i).array,select_add_num,add_obs_rand_size);
+                    [~,add_range_ground_obs]=sensor_judge(ground_add_obs,select_add_num,add_obs_rand_size);
+                    [current_add_obs(i).array]=gosamodel(add_range_ground_obs,start,ang_wp);
+                end
+            end
+        end
 
-        [up_obs]=gosamodel(glo_range_obs,start,ang_wp);
-     
+        if isempty(find(lm_first_stock(1).array,1)) == 0
+            for i = 1:add_count
+                if isempty(find(lm_first_stock(i).array,1)) == 1
+                    first_gosa_obs(i).array = zeros(2,length(glo_gosa_obs(1,:)));
+                    current_init_obs(i).array = zeros(2,length(glo_gosa_obs(1,:)));
+                else
+                    [first_range_size,first_gosa_obs(i).array]=sensor_judge(lm_first_stock(i).array,sen_num,glo_rand_size);
+                    [~,gosa_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
+                    [current_init_obs(i).array]=gosamodel(gosa_obs,start,ang_wp);
+                    disp(first_gosa_obs);
+                end
+                
+            end
+        end
+
+        if isempty(find(lm_add_stock(1).array,1)) == 0 && isempty(find(lm_first_stock(1).array,1)) == 0
+            lm_add_init = [first_gosa_obs add_gosa_obs];
+            lm_add_current = [current_init_obs current_add_obs];
+        elseif isempty(find(lm_add_stock(1).array,1)) == 1 && isempty(find(lm_first_stock(1).array,1)) == 0
+            lm_add_init = first_gosa_obs;
+            lm_add_current = current_init_obs;
+        elseif isempty(find(lm_add_stock(1).array,1)) == 0 && isempty(find(lm_first_stock(1).array,1)) == 1
+            lm_add_init = add_gosa_obs;
+            lm_add_current = current_add_obs;
+        else
+            lm_add_init = [];
+            lm_add_current = [];
+        end
         
+        [~,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
+        [up_obs]=gosamodel(glo_range_obs,start,ang_wp);
+        
+
+        if strcmp(add_path.State,'finished') && flag_continue == 0
+            if isempty(add_path.Error)
+                [add_path_stock,wp_add_stock] = fetchOutputs(add_path);
+                wp_add(add_count).array = wp_add_stock;
+                disp('Path Add !!');
+                plot(add_path_stock(1,:),add_path_stock(2,:),'Color',[1, 0, 0, 0.2],'LineWidth',3);
+                hold on;
+                cancel(add_path);
+                flag_continue = 1;
+            end
+        end
+
         for obs_i = 1:length(glo_obs(1,:))
             r(obs_i)=en_plot_red(glo_obs(:,obs_i).',glo_rand_size(obs_i));
         end
@@ -742,7 +810,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         [~,Cols] = size(up_obs);
         
         if R == 0 && Cols > 2
-            [wp,k,mat_er,plan_er,flag_stock]=compensation(up_obs,gosa_obs,wp_add_array);
+            [wp,k,mat_er,plan_er,flag_stock]=compensation(up_obs,gosa_obs,lm_add_current,lm_add_init);
             
             if flag_stock == 1
                 flag = 1;
