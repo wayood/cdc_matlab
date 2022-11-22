@@ -3,6 +3,8 @@ clear all;
 %try
 fig = figure;
 fig.Color = 'white';
+
+
 %% 初期宣言
 p.start = [0;0];
 global range_base;
@@ -27,16 +29,16 @@ global ax;
 global ButtonState;
 global add_path;
 global obs_list;
-global flag_continue;
+global flag_wp_continue;
 global wp_add;
 global lm_add_stock;
 global lm_first_stock;
 global add_count;
 add_count = 0;
-lm_first_stock.array = [];
-lm_add_stock.array = [];
-wp_add(1).array = [];
-flag_continue = 0;
+lm_first_stock = {};
+lm_add_stock = {};
+wp_add = {};
+flag_wp_continue = 0;
 add_path.State = 'wait';
 flag_add = 0;
 Path_analysis =[];
@@ -45,10 +47,17 @@ glo_slip_x = 0;
 glo_slip_y = 0;
 drive_cdc=[];
 ang_wp = pi/2;
-range_base=20;
+range_base=10;
 i=1;
 j=1;
 ax = axes(fig);
+ax.GridLineStyle = '-';
+ax.MinorGridAlpha = 0.1;
+ax.LineWidth = 1.5;
+ax.FontSize= 14;
+ax.XLabel.Interpreter = 'latex';
+ax.YLabel.Interpreter = 'latex';
+
 fig.WindowButtonDownFcn = @WindowButtonDownFcn_fig;
 fig.WindowButtonUpFcn = @WindowButtonUpFcn_fig;
 
@@ -60,17 +69,17 @@ while 1
     [ang,l] = cart2pol(ran_x,ran_y);   
     
     if l <= range_base  && (7*pi)/36 <= ang && ang <= (29*pi)/36
-        glo_rand_size(i)=0.3+0.5*rand;
+        glo_rand_size(i)=0.1+0.5*rand;
         glo_obs(1,i)=ran_x;
         glo_obs(2,i)=ran_y;
         i=i+1;
-    elseif (7*pi)/36 <= ang && ang <= (29*pi)/36
+    elseif (7*pi)/36 <= ang && ang <= (29*pi)/36 && ran_y < range_base + 20
         add_obs_rand_size(j) = 0.3+0.5*rand;
         ground_add_obs(:,j) = [ran_x;ran_y];
         j=j+1;
     end
 
-    if i >= 75 && j >= 75
+    if i >= 30 && j >= 75
         break;
     end
 end
@@ -78,6 +87,7 @@ end
 [glo_gosa_obs]=gosamodel(glo_obs,p.start,ang_wp);%経路生成時のLM座標
 [add_obs_init]=gosamodel(ground_add_obs,p.start,ang_wp);
 glo_add_obs_init = ground_add_obs;
+glo_obs_init = glo_obs;
 
 gosa_plot = graph_first(glo_gosa_obs,p,glo_rand_size);
 
@@ -88,7 +98,7 @@ wp=[x.';
     y.'];
 global wp_init;
 wp_init = wp;
-glo_obs_init = glo_obs;
+
 currentFile = sprintf('./wp/path_obstacle.mat');
 save(currentFile,'glo_obs_init','wp_init','glo_gosa_obs','glo_rand_size');
 
@@ -115,7 +125,7 @@ glo_start=p.start;
 %初期化
 i=1;
 po_cdc=[];
-slip = 50;
+slip = 30;
 dt = 0.1;
 count = 1;
 elapsed_count = 1;
@@ -220,12 +230,20 @@ function WindowButtonDownFcn_fig(~,~)
     global obs_list;
     global add_path;
     global wp_init;
-    global flag_continue;
+    global flag_wp_continue;
     global add_count;
+    global flag_add;
+    global wp_add;
+
     ButtonState = true; % 押下状態を保存
-    add_path = parfeval(backgroundPool,@DynamicWindowApproach_global,2,wp_init(:,end).',[ax.CurrentPoint(1,1),ax.CurrentPoint(1,2)],obs_list);
-    if flag_continue == 1
-        flag_continue = 0;
+    if isempty(wp_add) == 0
+        add_path = parfeval(backgroundPool,@DynamicWindowApproach_global,2,wp_add{end,:}(:,end).',[ax.CurrentPoint(1,1),ax.CurrentPoint(1,2)],obs_list);
+    else
+        add_path = parfeval(backgroundPool,@DynamicWindowApproach_global,2,wp_init(:,end).',[ax.CurrentPoint(1,1),ax.CurrentPoint(1,2)],obs_list);
+    end
+    flag_add = 1;
+    if flag_wp_continue == 1
+        flag_wp_continue = 0;
     end
     add_count = add_count + 1;
     plot(ax.CurrentPoint(1,1),ax.CurrentPoint(1,2),'g:o','MarkerSize',10);
@@ -291,14 +309,11 @@ end
 function [up_obs]=gosa_move(obs,start,ang_wp,v)
     global glo_slip_x;
     global glo_slip_y;
-    global glo_obs;
-    global glo_obs_init;
     
     sliprate(ang_wp,v);
     up_obs(1,:)=obs(1,:)+glo_slip_x;
     up_obs(2,:)=obs(2,:)+glo_slip_y;
-    glo_obs(1,:) = glo_obs_init(1,:) + glo_slip_x;
-    glo_obs(2,:) = glo_obs_init(2,:) + glo_slip_y;
+
 end
 
 function R = correlation(one_wp,another_wp)
@@ -390,10 +405,7 @@ function [wp_new,k,mat_er,plan_er,flag]=compensation(lm_current,lm_first,lm_add_
 
     lm_current(3,:) = 1;
     lm_first(3,:) = 1;
-    lm_add_current.array(3,:) = 1;
-    lm_add_init.array(3,:) = 1;
     
-
     A=lm_current*pinv(lm_first);
     wp_init(3,:)=1; 
   
@@ -410,12 +422,17 @@ function [wp_new,k,mat_er,plan_er,flag]=compensation(lm_current,lm_first,lm_add_
     wp_new=A*wp_init;
     wp_init(3,:) = [];
     
-    if isempty(wp_add(1).array) == 0
-        wp_add.array(3,:) = 1;
-        for i = 1:length(lm_add_current)
-            A_add = lm_add_current(i).array*pinv(lm_add_init(i).array);
-            wp_add_new(i).array = A_add*wp_add(i).array;
-            wp_new = [wp_new wp_add_new(i).array];
+    if isempty(wp_add) == 0
+        for i = 1:length(wp_add)
+            wp_add{i,:}(3,:) = 1;
+            
+            lm_add_current{i}(3,:) = 1;
+            lm_add_init{i}(3,:) = 1;
+            
+            A_add = lm_add_current{i}*pinv(lm_add_init{i});
+            wp_add_new = A_add*wp_add{i,:};
+            wp_new = [wp_new wp_add_new];
+            wp_add{i,:}(3,:) = [];
         end
     end
    
@@ -476,8 +493,8 @@ function [b] = graph_first(glo_gosa_obs,p,size)
     plot(p.start(1,1),p.start(2,1),'b:.','MarkerSize',5);
     hold on;
     grid on;
-    xlabel('x[m]')
-    ylabel('y[m]')
+    xlabel('$x[m]$', 'Interpreter', 'latex');
+    ylabel('$y[m]$', 'Interpreter', 'latex');
     xlim([-20 20]);
     ylim([0 30]);
 end
@@ -560,6 +577,12 @@ end
 
 %% アニメーション　円の作成
 %円の塗りつぶし
+function b=circle_plot(obstacle,size,color)
+ [x,y]=circle(obstacle(1,1),obstacle(1,2),size);
+ b=fill(x,y,color);
+ hold on;
+end
+
 function b=en_plot_blue(glo_obs,size)
  [x,y]=circle(glo_obs(1,1),glo_obs(1,2),size);
  b=fill(x,y,'b','FaceAlpha',.3,'EdgeAlpha',.3);
@@ -623,7 +646,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
     global drive_cdc;
     global po_cdc;
     global obs_list;
-    global flag_continue;
+    global flag_wp_continue;
     global add_count;
     global glo_add_obs_init;
     global ground_add_obs;
@@ -633,39 +656,46 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
     global wp_add;
     global lm_add_stock;
     global lm_first_stock;
+    global glo_slip_x;
+    global glo_slip_y;
+    global glo_obs_init;
     Hz = 2;
     Goal_tor = 0.5;
     flag = 0;
     obstacleR=0.5;%衝突判定用の障害物の半径
-    
+    mintblue = [0.3010 0.7450 0.9330];
+
     %ロボットの力学モデル
     %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
     % 速度解像度[m/s],回頭速度解像度[rad/s]]
     Kinematic=[1.0,toRadian(20.0),0.2,toRadian(50.0),0.01,toRadian(1)];
 
     %評価関数のパラメータ [heading,dist,velocity,predictDT]
-    evalParam=[0.5,0.5,0.2,2.0];
+    evalParam=[0.5,0.2,0.2,2.0];
 
     %シミュレーション結果
     result.x=[];
-    
+    select_add_num = 1;
+
     % Main loop
     for i=1:5000
-        first_gosa_obs = [];
-        current_init_obs = [];
-        add_gosa_obs = [];
-        current_add_obs = [];
+        first_gosa_obs = {};
+        current_init_obs = {};
+        add_gosa_obs = {};
+        current_add_obs = {};
+        lm_add_init = {};
+        lm_add_current = {};
 
         R = rem(i*0.5,Hz);
         if i == 1 && wp_i == 1 
             goal = wp_init(:,wp_i).';
             wp = wp_init;
             [obs_init_stock]=gosa_hozon(glo_gosa_obs);
-            [add_obs_init_stock]=gosa_hozon(glo_add_obs_init);
+            [add_obs_init_stock]=gosa_hozon(add_obs_init);
         else
             goal = wp(:,wp_i).';
         end
-        
+
         
         %DWAによる入力値の計算
         if i==1
@@ -683,6 +713,10 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
             delete(r);
             delete(wp_plt);
         end
+        
+        if i>1 & isempty(find(select_add_num == 0)) == 0
+            delete(d_obs);
+        end
 
         x=f(x,u);%運動モデルによる移動
 
@@ -694,89 +728,99 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         % 誤差の検出と推定
         [cur_obs]=gosa_move(obs_init_stock,start,x(3),u(1,1));
         [cur_add_obs]=gosa_move(add_obs_init_stock,start,x(3),u(1,1));
-
+        glo_obs(1,:) = glo_obs_init(1,:) + glo_slip_x;
+        glo_obs(2,:) = glo_obs_init(2,:) + glo_slip_y;
+        ground_add_obs(1,:) = glo_add_obs_init(1,:) + glo_slip_x;
+        ground_add_obs(2,:) = glo_add_obs_init(2,:) + glo_slip_y;
+        
         [ang_wp,sen_num,~]=sensor_range(cur_obs,start,x(3));
         [~,select_add_num,~]=sensor_range(cur_add_obs,start,x(3));
 
         [rand_size,gosa_obs]=sensor_judge(glo_gosa_obs,sen_num,glo_rand_size);
 
-
             %add時のlm初期状態と追加状態で登録
-        if flag_add == 0 && strcmp(add_path.State,'running')  
+        if flag_add == 1 && strcmp(add_path.State,'running')  
             if find(sen_num) ~= 1
-                lm_first_stock(add_count).array = cur_obs;
+                lm_first_stock(add_count,:) = {cur_obs};
             end
         end
 
-        if flag_add == 0 & find(select_add_num) ~= 1  
+        if flag_add == 1 & isempty(find(select_add_num == 0)) == 0  
             if strcmp(add_path.State,'running')
-                lm_add_stock(add_count).array = cur_add_obs;
+                lm_add_stock(add_count,:) = {cur_add_obs};
             end
         end
-
-        if isempty(find(lm_add_stock(1).array,1)) == 0 || isempty(find(lm_first_stock(1).array,1)) == 0
-            flag_add = 1;
-            if isempty(lm_first_stock(add_count)) == 1
-                lm_first_stock(add_count).array = zeros(2,length(glo_gosa_obs(1,:)));
-            elseif isempty(lm_add_stock(add_count)) == 1
-                lm_add_stock(add_count).array = zeros(2,length(add_obs_init(1,:)));
+        
+        if flag_add == 1
+            flag_add = 0;
+            if length(lm_first_stock) ~= add_count
+                lm_first_stock(add_count,:) = {zeros(2,length(glo_gosa_obs(1,:)))};
+            end
+            if length(lm_add_stock) ~= add_count
+                lm_add_stock(add_count,:) = {zeros(2,length(add_obs_init(1,:)))};
             end
         end
-        if isempty(find(lm_add_stock(1).array,1)) == 0
-            for i = 1:add_count
-                if isempty(find(lm_add_stock(i).array,1)) == 1
-                    add_gosa_obs(i).array = zeros(2,length(add_obs_init(1,:)));
-                    current_add_obs(i).array = zeros(2,length(add_obs_init(1,:)));
+        if isempty(lm_add_stock) == 0
+            for add_i = 1:add_count
+                if isempty(find(cell2mat(lm_add_stock(add_i,:)),1)) == 1
+                    gosa_add_obs = zeros(2,length(add_obs_init(1,:)));
+                    add_obs = zeros(2,length(add_obs_init(1,:)));
                 else
-                    [add_range_size,add_gosa_obs(i).array]=sensor_judge(lm_add_stock(i).array,select_add_num,add_obs_rand_size);
+                    [add_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_add_stock(add_i,:)),select_add_num,add_obs_rand_size);
                     [~,add_range_ground_obs]=sensor_judge(ground_add_obs,select_add_num,add_obs_rand_size);
-                    [current_add_obs(i).array]=gosamodel(add_range_ground_obs,start,ang_wp);
+                    [add_obs]=gosamodel(add_range_ground_obs,start,ang_wp);
                 end
+                current_add_obs(add_i,:) = {add_obs};
+                add_gosa_obs(add_i,:) = {gosa_add_obs};
             end
         end
 
-        if isempty(find(lm_first_stock(1).array,1)) == 0
-            for i = 1:add_count
-                if isempty(find(lm_first_stock(i).array,1)) == 1
-                    first_gosa_obs(i).array = zeros(2,length(glo_gosa_obs(1,:)));
-                    current_init_obs(i).array = zeros(2,length(glo_gosa_obs(1,:)));
+        if isempty(lm_first_stock) == 0
+            for add_i = 1:add_count
+                if isempty(find(cell2mat(lm_first_stock(add_i,:)),1)) == 1
+                    gosa_add_obs = zeros(2,length(glo_gosa_obs(1,:)));
+                    init_obs = zeros(2,length(glo_gosa_obs(1,:)));
                 else
-                    [first_range_size,first_gosa_obs(i).array]=sensor_judge(lm_first_stock(i).array,sen_num,glo_rand_size);
-                    [~,gosa_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
-                    [current_init_obs(i).array]=gosamodel(gosa_obs,start,ang_wp);
-                    disp(first_gosa_obs);
+                    [first_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_first_stock(add_i,:)),sen_num,glo_rand_size);
+                    [~,first_range_gosa_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
+                    [init_obs]=gosamodel(first_range_gosa_obs,start,ang_wp);
+                    
                 end
-                
+                current_init_obs(add_i,:) = {init_obs};
+                first_gosa_obs(add_i,:) = {gosa_add_obs};
             end
         end
-
-        if isempty(find(lm_add_stock(1).array,1)) == 0 && isempty(find(lm_first_stock(1).array,1)) == 0
-            lm_add_init = [first_gosa_obs add_gosa_obs];
-            lm_add_current = [current_init_obs current_add_obs];
-        elseif isempty(find(lm_add_stock(1).array,1)) == 1 && isempty(find(lm_first_stock(1).array,1)) == 0
-            lm_add_init = first_gosa_obs;
-            lm_add_current = current_init_obs;
-        elseif isempty(find(lm_add_stock(1).array,1)) == 0 && isempty(find(lm_first_stock(1).array,1)) == 1
-            lm_add_init = add_gosa_obs;
-            lm_add_current = current_add_obs;
-        else
-            lm_add_init = [];
-            lm_add_current = [];
+        
+        if isempty(lm_add_stock) == 0 && isempty(lm_first_stock) == 0   
+            for add_i = 1:add_count
+                if isempty(find(lm_add_stock{add_i})) == 0 && isempty(find(lm_first_stock{add_i})) == 0
+                    lm_add_init(add_i,:) = {first_gosa_obs{add_i,:} add_gosa_obs{add_i,:}};
+                    lm_add_current(add_i,:) = {current_init_obs{add_i,:} current_add_obs{add_i,:}};
+                elseif isempty(find(lm_add_stock{add_i})) && isempty(find(lm_first_stock{add_i})) == 0
+                    lm_add_init(add_i,:) = first_gosa_obs(add_i,:);
+                    lm_add_current(add_i,:) = current_init_obs(add_i,:);
+                elseif isempty(find(lm_add_stock{add_i}))  == 0&& isempty(find(lm_first_stock{add_i}))
+                    lm_add_init(add_i,:) = add_gosa_obs(add_i,:);
+                    lm_add_current(add_i,:) = current_add_obs(add_i,:);
+                end
+            end           
         end
+                
+        
         
         [~,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
         [up_obs]=gosamodel(glo_range_obs,start,ang_wp);
         
 
-        if strcmp(add_path.State,'finished') && flag_continue == 0
+        if strcmp(add_path.State,'finished') && flag_wp_continue == 0
             if isempty(add_path.Error)
                 [add_path_stock,wp_add_stock] = fetchOutputs(add_path);
-                wp_add(add_count).array = wp_add_stock;
+                wp_add(add_count,:) = {wp_add_stock(:,2:end)};
                 disp('Path Add !!');
                 plot(add_path_stock(1,:),add_path_stock(2,:),'Color',[1, 0, 0, 0.2],'LineWidth',3);
                 hold on;
                 cancel(add_path);
-                flag_continue = 1;
+                flag_wp_continue = 1;
             end
         end
 
@@ -825,6 +869,16 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
                 break;
             end
         end
+
+
+        if isempty(find(select_add_num == 0)) == 0
+            [add_range_size,add_range_obs]=sensor_judge(ground_add_obs,select_add_num,add_obs_rand_size);
+            [up_add_obs]=gosamodel(add_range_obs,start,ang_wp);
+            
+            for obs_i = 1:length(up_add_obs(1,:))
+                d_obs(obs_i) = circle_plot(up_add_obs(:,obs_i).',add_range_size(obs_i),mintblue);
+            end
+        end
         
         for j=wp_i:length(wp(1,:))
           wp_plt(j) = plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
@@ -861,7 +915,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         end
         
         if i > 20 && norm([x(1) - result.x(end-20,1),x(2) - result.x(end-20,2)]) < 0.3
-            flag = 1;
+            flag = 0;
         end
         %{
         if  i > 150 && abs(result.x(length(result.x(:,1)),1) - result.x(length(result.x(:,1))-150,1)) < 1.0 && abs(result.x(length(result.x(:,1)),2) - result.x(length(result.x(:,1))-150,2)) < 1.0 
