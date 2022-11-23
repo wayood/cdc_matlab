@@ -664,6 +664,9 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
     flag = 0;
     obstacleR=0.5;%衝突判定用の障害物の半径
     mintblue = [0.3010 0.7450 0.9330];
+    add_obs = [];
+    add_flag = 0;
+    add_obs_plot = [];
 
     %ロボットの力学モデル
     %[最高速度[m/s],最高回頭速度[rad/s],最高加減速度[m/ss],最高加減回頭速度[rad/ss],
@@ -685,6 +688,9 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         current_add_obs = {};
         lm_add_init = {};
         lm_add_current = {};
+        lm_first_size = {};
+        lm_current_size ={};
+        lm_add_size = {};
 
         R = rem(i*0.5,Hz);
         if i == 1 && wp_i == 1 
@@ -765,6 +771,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
                 if isempty(find(cell2mat(lm_add_stock(add_i,:)),1)) == 1
                     gosa_add_obs = zeros(2,length(add_obs_init(1,:)));
                     add_obs = zeros(2,length(add_obs_init(1,:)));
+                    add_range_size = zeros(length(add_obs_init(1,:)));
                 else
                     [add_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_add_stock(add_i,:)),select_add_num,add_obs_rand_size);
                     [~,add_range_ground_obs]=sensor_judge(ground_add_obs,select_add_num,add_obs_rand_size);
@@ -772,6 +779,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
                 end
                 current_add_obs(add_i,:) = {add_obs};
                 add_gosa_obs(add_i,:) = {gosa_add_obs};
+                lm_current_size(add_i,:) = {add_range_size};
             end
         end
 
@@ -780,14 +788,15 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
                 if isempty(find(cell2mat(lm_first_stock(add_i,:)),1)) == 1
                     gosa_add_obs = zeros(2,length(glo_gosa_obs(1,:)));
                     init_obs = zeros(2,length(glo_gosa_obs(1,:)));
+                    first_range_size = zeros(length(glo_gosa_obs(1,:)));
                 else
                     [first_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_first_stock(add_i,:)),sen_num,glo_rand_size);
                     [~,first_range_gosa_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
                     [init_obs]=gosamodel(first_range_gosa_obs,start,ang_wp);
-                    
                 end
                 current_init_obs(add_i,:) = {init_obs};
                 first_gosa_obs(add_i,:) = {gosa_add_obs};
+                lm_first_size(add_i,:) = {first_range_size};
             end
         end
         
@@ -796,12 +805,15 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
                 if isempty(find(lm_add_stock{add_i})) == 0 && isempty(find(lm_first_stock{add_i})) == 0
                     lm_add_init(add_i,:) = {first_gosa_obs{add_i,:} add_gosa_obs{add_i,:}};
                     lm_add_current(add_i,:) = {current_init_obs{add_i,:} current_add_obs{add_i,:}};
+                    lm_add_size(add_i,:) = {lm_first_size{add_i,:} lm_current_size{add_i,:}};
                 elseif isempty(find(lm_add_stock{add_i})) && isempty(find(lm_first_stock{add_i})) == 0
                     lm_add_init(add_i,:) = first_gosa_obs(add_i,:);
                     lm_add_current(add_i,:) = current_init_obs(add_i,:);
+                    lm_add_size(add_i,:) = lm_first_size(add_i,:);
                 elseif isempty(find(lm_add_stock{add_i}))  == 0&& isempty(find(lm_first_stock{add_i}))
                     lm_add_init(add_i,:) = add_gosa_obs(add_i,:);
                     lm_add_current(add_i,:) = current_add_obs(add_i,:);
+                    lm_add_size(add_i,:) = lm_current_size(add_i,:);
                 end
             end           
         end
@@ -851,6 +863,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         end
         
         
+        
         [~,Cols] = size(up_obs);
         
         if R == 0 && Cols > 2
@@ -880,6 +893,21 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
             end
         end
         
+        if add_flag == 1 && isempty(add_obs_plot) == 0
+            delete(add_obs_plot);
+        end
+        
+        add_flag = 0;
+        if isempty(lm_add_current) == 0
+            for add_i = 1:add_count
+                for obs_i = 1:length(lm_add_current{add_i}(1,:))
+                    add_obs_plot(obs_i)=en_plot_orange(lm_add_current{add_i}(:,obs_i).',lm_add_size{add_i}(obs_i));
+                end
+            end
+            disp();
+            add_flag = 1;
+        end
+
         for j=wp_i:length(wp(1,:))
           wp_plt(j) = plot(wp(1,j),wp(2,j),'g:o','MarkerSize',10);
           hold on;
@@ -907,6 +935,9 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
             delete(wp_plt);
             delete(L);
             delete(r);
+            if i>1 & isempty(find(select_add_num == 0)) == 0
+                delete(d_obs);
+            end
             if length(wp(1,:)) == wp_i
                 break;
             end
