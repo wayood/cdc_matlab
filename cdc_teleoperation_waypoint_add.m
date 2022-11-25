@@ -568,6 +568,68 @@ function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
       sen_obs = obs(:,~idx);
 end
 
+function plot_sensor_range(start,ang)
+    
+    global range_base;
+    range_minus_min = 0;
+   if ang > pi
+       ang_pol = ang - 2*pi;
+   elseif ang > 2*pi
+       r = rem(ang,2*pi);
+       if r > pi
+           ang_pol = r - 2*pi;
+       else
+           ang_pol = r;
+       end
+   else
+       ang_pol = ang;
+   end
+   range_min = ang_pol-(11*pi/36);
+   range_max = ang_pol+(11*pi/36);
+   if abs(range_min) > pi && ang_pol < 0
+       range_plus_min = 2*pi - abs(range_min);
+       range_plus_max = pi;
+       range_minus_max = range_max;
+       range_minus_min = -pi;    
+   elseif range_max > pi && ang_pol > 0
+       range_plus_min = range_min;
+       range_plus_max = pi;
+       range_minus_max = range_max - 2*pi;
+       range_minus_min = -pi;
+   else
+       range_plus_min = range_min;
+       range_plus_max = range_max;
+       theta = linspace(range_min,range_max);
+       plot(range_base*sin(theta),range_base*cos(theta));
+       hold on;
+       side_range = [start(1,1),start(2,1)
+                     range_base*cos(range_min) + start(1,1),range_base*sin(range_min) + start(2,1)
+                     range_base*cos(range_max) + start(1,1),range_base*sin(range_max) + start(2,1)];
+   end
+
+   if isempty(find(range_minus_min == 0)) == 0
+
+       theta = linspace(range_min,range_max);
+       kill = plot(range_base*cos(theta) + start(1,1),range_base*sin(theta)+ start(2,1),'Color',[0,0,0],'LineWidth',2);
+       hold on;
+       
+   else
+       theta_plus = linspace(range_plus_min,range_plus_max);
+       theta_minus = linspace(range_minus_min,range_minus_max);
+       side_range = [start(1,1),start(2,1)
+                     range_base*cos(range_plus_min) + start(1,1),range_base*sin(range_plus_min) + start(2,1)
+                     range_base*cos(range_minus_max) + start(1,1),range_base*sin(range_minus_max) + start(2,1)];
+       plot(range_base*sin(theta_minus) + start(2,1),range_base*cos(theta_minus)+ start(1,1),'Color',[0,0,0],'LineWidth',2);
+       hold on;
+       plot(range_base*sin(theta_plus) + start(2,1),range_base*cos(theta_plus)+ start(1,1),'Color',[0,0,0],'LineWidth',2);
+       hold on;
+   end
+    plot(side_range(1:2,1),side_range(1:2,2),'Color',[0,0,0],'LineWidth',1);
+    hold on;
+    side_range(2,:)=[];
+    plot(side_range(1:2,1),side_range(1:2,2),'Color',[0,0,0],'LineWidth',1);
+    hold on;
+end
 %% 二点間のプロット
 function kill = f_twopoint(af_start,bef_start)
     start = [af_start bef_start];
@@ -822,7 +884,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         
         [~,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
         [up_obs]=gosamodel(glo_range_obs,start,ang_wp);
-        
+        plot_sensor_range(start,ang_wp);
 
         if strcmp(add_path.State,'finished') && flag_wp_continue == 0
             if isempty(add_path.Error)
@@ -904,7 +966,6 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
                     add_obs_plot(obs_i)=en_plot_orange(lm_add_current{add_i}(:,obs_i).',lm_add_size{add_i}(obs_i));
                 end
             end
-            disp();
             add_flag = 1;
         end
 
