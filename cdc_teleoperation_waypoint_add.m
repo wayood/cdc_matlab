@@ -34,10 +34,20 @@ global wp_add;
 global lm_add_stock;
 global lm_first_stock;
 global add_count;
+global lm_add_current_stock;
+global add_obs_size;
+global first_obs_size;
+global lm_first_current_stock;
+global add_slip;
+add_slip = {};
 add_count = 0;
 lm_first_stock = {};
 lm_add_stock = {};
 wp_add = {};
+lm_add_current_stock = {};
+add_obs_size = {};
+first_obs_size = {};
+lm_first_current_stock = {};
 flag_wp_continue = 0;
 add_path.State = 'wait';
 flag_add = 0;
@@ -402,25 +412,33 @@ function [wp_new,k,mat_er,plan_er,flag]=compensation(lm_current,lm_first,lm_add_
     global wp_init;
     global lm_cur_1;
     global wp_add;
-
-    lm_current(3,:) = 1;
-    lm_first(3,:) = 1;
-    
-    A=lm_current*pinv(lm_first);
-    wp_init(3,:)=1; 
-  
     global A_n;
-    flag = 0;
-    if isempty(A_n)==0
-     [mat_er,plan_er,flag] = A_matrix(A,lm_current,lm_first,A_n,lm_cur_1);
+    wp_init(3,:)=1;
+
+    if isempty(lm_current) == 0
+        lm_current(3,:) = 1;
+        lm_first(3,:) = 1; 
+        A=lm_current*pinv(lm_first);
+        flag = 0;
+        if isempty(A_n)==0
+         [mat_er,plan_er,flag] = A_matrix(A,lm_current,lm_first,A_n,lm_cur_1);
+        else
+            mat_er=0;
+            plan_er=0;
+        end
+        lm_cur_1 = lm_current;
+        A_n=A;
+        wp_new=A*wp_init;
+        wp_init(3,:) = [];
+        k=cond(A,2);
     else
-        mat_er=0;
-        plan_er=0;
+        wp_new = wp_init;
+        wp_new(3,:)=[];
+        k = 0;
+        mat_er = 0;
+        plan_er = 0;
+        flag = 0;
     end
-    lm_cur_1 = lm_current;
-    A_n=A;
-    wp_new=A*wp_init;
-    wp_init(3,:) = [];
     
     if isempty(wp_add) == 0
         for i = 1:length(wp_add)
@@ -434,10 +452,9 @@ function [wp_new,k,mat_er,plan_er,flag]=compensation(lm_current,lm_first,lm_add_
             wp_new = [wp_new wp_add_new];
             wp_add{i,:}(3,:) = [];
         end
+        wp_new(3,:)=[];
     end
-   
-    wp_new(3,:)=[];
-    k=cond(A,2);
+    
 end
 
 %% A行列解析
@@ -568,7 +585,7 @@ function [ang,sen_num,sen_obs]=sensor_range(obs,start,ang)
       sen_obs = obs(:,~idx);
 end
 
-function plot_sensor_range(start,ang)
+function kill = plot_sensor_range(start,ang)
     
     global range_base;
     range_minus_min = 0;
@@ -599,35 +616,30 @@ function plot_sensor_range(start,ang)
    else
        range_plus_min = range_min;
        range_plus_max = range_max;
-       theta = linspace(range_min,range_max);
-       plot(range_base*sin(theta),range_base*cos(theta));
-       hold on;
        side_range = [start(1,1),start(2,1)
                      range_base*cos(range_min) + start(1,1),range_base*sin(range_min) + start(2,1)
                      range_base*cos(range_max) + start(1,1),range_base*sin(range_max) + start(2,1)];
    end
 
    if isempty(find(range_minus_min == 0)) == 0
-
        theta = linspace(range_min,range_max);
-       kill = plot(range_base*cos(theta) + start(1,1),range_base*sin(theta)+ start(2,1),'Color',[0,0,0],'LineWidth',2);
+       kill(1) = plot(range_base*cos(theta) + start(1,1),range_base*sin(theta)+ start(2,1),'Color',[0,0,0],'LineWidth',1);
        hold on;
-       
    else
        theta_plus = linspace(range_plus_min,range_plus_max);
        theta_minus = linspace(range_minus_min,range_minus_max);
        side_range = [start(1,1),start(2,1)
                      range_base*cos(range_plus_min) + start(1,1),range_base*sin(range_plus_min) + start(2,1)
                      range_base*cos(range_minus_max) + start(1,1),range_base*sin(range_minus_max) + start(2,1)];
-       plot(range_base*sin(theta_minus) + start(2,1),range_base*cos(theta_minus)+ start(1,1),'Color',[0,0,0],'LineWidth',2);
+       kill(1) = plot(range_base*cos(theta_minus) + start(1,1),range_base*sin(theta_minus)+ start(2,1),'Color',[0,0,0],'LineWidth',1);
        hold on;
-       plot(range_base*sin(theta_plus) + start(2,1),range_base*cos(theta_plus)+ start(1,1),'Color',[0,0,0],'LineWidth',2);
+       kill(2) = plot(range_base*cos(theta_plus) + start(1,1),range_base*sin(theta_plus)+ start(2,1),'Color',[0,0,0],'LineWidth',1);
        hold on;
    end
-    plot(side_range(1:2,1),side_range(1:2,2),'Color',[0,0,0],'LineWidth',1);
+   kill(end+1) = plot(side_range(1:2,1),side_range(1:2,2),'Color',[0,0,0],'LineWidth',1);
     hold on;
     side_range(2,:)=[];
-    plot(side_range(1:2,1),side_range(1:2,2),'Color',[0,0,0],'LineWidth',1);
+    kill(end+1) = plot(side_range(1:2,1),side_range(1:2,2),'Color',[0,0,0],'LineWidth',1);
     hold on;
 end
 %% 二点間のプロット
@@ -721,6 +733,11 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
     global glo_slip_x;
     global glo_slip_y;
     global glo_obs_init;
+    global lm_add_current_stock;
+    global add_obs_size;
+    global first_obs_size;
+    global lm_first_current_stock;
+    global add_slip;
     Hz = 2;
     Goal_tor = 0.5;
     flag = 0;
@@ -736,7 +753,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
     Kinematic=[1.0,toRadian(20.0),0.2,toRadian(50.0),0.01,toRadian(1)];
 
     %評価関数のパラメータ [heading,dist,velocity,predictDT]
-    evalParam=[0.5,0.2,0.2,2.0];
+    evalParam=[0.5,0.0,0.5,2.0];
 
     %シミュレーション結果
     result.x=[];
@@ -780,6 +797,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
             delete(b);
             delete(r);
             delete(wp_plt);
+            delete(kill_sensor_range);
         end
         
         if i>1 & isempty(find(select_add_num == 0)) == 0
@@ -809,34 +827,49 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
             %add時のlm初期状態と追加状態で登録
         if flag_add == 1 && strcmp(add_path.State,'running')  
             if find(sen_num) ~= 1
+                [add_size,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
+                [cur_obs]=gosamodel(glo_range_obs,start,ang_wp);
                 lm_first_stock(add_count,:) = {cur_obs};
+                lm_first_current_stock(add_count,:) = {cur_obs};
+                first_obs_size(add_count,:) = {add_size};
             end
         end
 
         if flag_add == 1 & isempty(find(select_add_num == 0)) == 0  
             if strcmp(add_path.State,'running')
+                [add_size,add_range_ground_obs]=sensor_judge(ground_add_obs,select_add_num,add_obs_rand_size);
+                [cur_add_obs]=gosamodel(add_range_ground_obs,start,ang_wp);
                 lm_add_stock(add_count,:) = {cur_add_obs};
+                lm_add_current_stock(add_count,:) = {cur_add_obs};
+                add_obs_size(add_count,:) = {add_size};
             end
         end
         
         if flag_add == 1
             flag_add = 0;
+            add_slip(add_count) = {[glo_slip_x,glo_slip_y]}; 
             if length(lm_first_stock) ~= add_count
                 lm_first_stock(add_count,:) = {zeros(2,length(glo_gosa_obs(1,:)))};
+                lm_first_current_stock(add_count,:) = {zeros(2,length(glo_gosa_obs(1,:)))};
             end
             if length(lm_add_stock) ~= add_count
                 lm_add_stock(add_count,:) = {zeros(2,length(add_obs_init(1,:)))};
+                lm_add_current_stock(add_count,:) = {zeros(2,length(add_obs_init(1,:)))};
             end
         end
+
         if isempty(lm_add_stock) == 0
             for add_i = 1:add_count
+                lm_add_current_stock{add_i}(1,:) = lm_add_stock{add_i}(1,:) + glo_slip_x - add_slip{add_i}(1,1);
+                lm_add_current_stock{add_i}(2,:) = lm_add_stock{add_i}(2,:) + glo_slip_y - add_slip{add_i}(1,2);
                 if isempty(find(cell2mat(lm_add_stock(add_i,:)),1)) == 1
                     gosa_add_obs = zeros(2,length(add_obs_init(1,:)));
                     add_obs = zeros(2,length(add_obs_init(1,:)));
                     add_range_size = zeros(length(add_obs_init(1,:)));
                 else
-                    [add_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_add_stock(add_i,:)),select_add_num,add_obs_rand_size);
-                    [~,add_range_ground_obs]=sensor_judge(ground_add_obs,select_add_num,add_obs_rand_size);
+                    [~,num_add,~]=sensor_range(lm_add_current_stock{add_i},start,x(3));
+                    [add_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_add_stock(add_i,:)),num_add,add_obs_size{add_count});
+                    [~,add_range_ground_obs]=sensor_judge(lm_add_current_stock{add_i},num_add,add_obs_size{add_count});
                     [add_obs]=gosamodel(add_range_ground_obs,start,ang_wp);
                 end
                 current_add_obs(add_i,:) = {add_obs};
@@ -847,13 +880,16 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
 
         if isempty(lm_first_stock) == 0
             for add_i = 1:add_count
+                lm_first_current_stock{add_i}(1,:) = lm_first_stock{add_i}(1,:) + glo_slip_x - add_slip{add_i}(1,1);
+                lm_first_current_stock{add_i}(2,:) = lm_first_stock{add_i}(2,:) + glo_slip_y - add_slip{add_i}(1,2);
                 if isempty(find(cell2mat(lm_first_stock(add_i,:)),1)) == 1
                     gosa_add_obs = zeros(2,length(glo_gosa_obs(1,:)));
                     init_obs = zeros(2,length(glo_gosa_obs(1,:)));
                     first_range_size = zeros(length(glo_gosa_obs(1,:)));
                 else
-                    [first_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_first_stock(add_i,:)),sen_num,glo_rand_size);
-                    [~,first_range_gosa_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
+                    [~,num_first,~]=sensor_range(lm_first_current_stock{add_i},start,x(3));
+                    [first_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_first_stock(add_i,:)),num_first,first_obs_size{add_i});
+                    [~,first_range_gosa_obs]=sensor_judge(lm_first_current_stock{add_i},num_first,first_obs_size{add_i});
                     [init_obs]=gosamodel(first_range_gosa_obs,start,ang_wp);
                 end
                 current_init_obs(add_i,:) = {init_obs};
@@ -880,11 +916,37 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
             end           
         end
                 
-        
-        
-        [~,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
-        [up_obs]=gosamodel(glo_range_obs,start,ang_wp);
-        plot_sensor_range(start,ang_wp);
+        for obs_i = 1:length(glo_obs(1,:))
+            r(obs_i)=en_plot_red(glo_obs(:,obs_i).',glo_rand_size(obs_i));
+        end
+
+        if isempty(find(sen_num == 0)) == 0
+            [~,glo_range_obs]=sensor_judge(glo_obs,sen_num,glo_rand_size);
+            [up_obs]=gosamodel(glo_range_obs,start,ang_wp);
+            kill_sensor_range = plot_sensor_range(start,ang_wp);
+
+            % 障害物の座標格納
+            [~,cols] = size(up_obs);
+            if cols < 2 && up_obs(2,1) == 0
+                obs_list = [];
+            else
+                ob=ob_round(up_obs,rand_size);
+                obs_list=ob.';
+                
+                %LMの変化量を図示
+                L = lm_line(up_obs,gosa_obs);
+                
+                %ポテンシャル遷移で評価
+                po_cdc_st=potential(up_obs,start,rand_size);
+                po_cdc = [po_cdc po_cdc_st];
+                sum_po_cdc=sum(po_cdc)/length(po_cdc);
+                currentFile = sprintf('./potential/potential_cdc.mat');
+                save(currentFile,'glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
+                for j=1:length(up_obs(1,:))
+                    b(j)=en_plot_orange(up_obs(:,j).',rand_size(j));
+                end
+            end
+        end
 
         if strcmp(add_path.State,'finished') && flag_wp_continue == 0
             if isempty(add_path.Error)
@@ -897,38 +959,8 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
                 flag_wp_continue = 1;
             end
         end
-
-        for obs_i = 1:length(glo_obs(1,:))
-            r(obs_i)=en_plot_red(glo_obs(:,obs_i).',glo_rand_size(obs_i));
-        end
         
-        % 障害物の座標格納
-        [~,cols] = size(up_obs);
-        if cols < 2 && up_obs(2,1) == 0
-            obs_list = [];
-        else
-            ob=ob_round(up_obs,rand_size);
-            obs_list=ob.';
-            
-            %LMの変化量を図示
-            L = lm_line(up_obs,gosa_obs);
-            
-            %ポテンシャル遷移で評価
-            po_cdc_st=potential(up_obs,start,rand_size);
-            po_cdc = [po_cdc po_cdc_st];
-            sum_po_cdc=sum(po_cdc)/length(po_cdc);
-            currentFile = sprintf('./potential/potential_cdc.mat');
-            save(currentFile,'glo_obs','glo_gosa_obs','glo_rand_size','drive_cdc','po_cdc','sum_po_cdc');
-            for j=1:length(up_obs(1,:))
-                b(j)=en_plot_orange(up_obs(:,j).',rand_size(j));
-            end
-        end
-        
-        
-        
-        [~,Cols] = size(up_obs);
-        
-        if R == 0 && Cols > 2
+        if R == 0
             [wp,k,mat_er,plan_er,flag_stock]=compensation(up_obs,gosa_obs,lm_add_current,lm_add_init);
             
             if flag_stock == 1
@@ -937,10 +969,6 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
             
             if flag == 1
                 ang = x(3);
-                %プロットポイントコメントアウト部分
-                delete(wp_plt);
-                delete(L);
-                delete(r);
                 break;
             end
         end
@@ -954,17 +982,19 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
                 d_obs(obs_i) = circle_plot(up_add_obs(:,obs_i).',add_range_size(obs_i),mintblue);
             end
         end
-        
-        if add_flag == 1 && isempty(add_obs_plot) == 0
+
+        if add_flag == 1 && i > 1 
             delete(add_obs_plot);
+            add_flag = 0;
         end
         
-        add_flag = 0;
-        if isempty(lm_add_current) == 0
+        
+        if isempty(lm_add_stock) == 0
             for add_i = 1:add_count
                 for obs_i = 1:length(lm_add_current{add_i}(1,:))
-                    add_obs_plot(obs_i)=en_plot_orange(lm_add_current{add_i}(:,obs_i).',lm_add_size{add_i}(obs_i));
+                    add_obs_plot_stock(obs_i) = en_plot_orange(lm_add_current{add_i}(:,obs_i).',lm_add_size{add_i}(obs_i));
                 end
+                add_obs_plot = [add_obs_plot add_obs_plot_stock];
             end
             add_flag = 1;
         end
@@ -989,16 +1019,11 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         %}
         
         %ゴール判定
-        if norm(x(1:2)-goal')<Goal_tor
+        disp(norm([x(1),x(2)]-goal));
+        if norm(x(1:2)-goal) < Goal_tor
             disp('Arrive Goal!!');
             ang = x(3);
             %プロットポイントコメントアウト部分
-            delete(wp_plt);
-            delete(L);
-            delete(r);
-            if i>1 & isempty(find(select_add_num == 0)) == 0
-                delete(d_obs);
-            end
             if length(wp(1,:)) == wp_i
                 break;
             end
@@ -1043,10 +1068,19 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
                hold on;
             end
          end
-         %drawnow;
          pause(0.01);
     end
-
+    %プロットポイントコメントアウト部分
+    delete(kill_sensor_range);
+    delete(wp_plt);
+    delete(L);
+    delete(r);
+    if i>1 & isempty(find(select_add_num == 0)) == 0
+        delete(d_obs);
+    end
+    if add_flag == 1 && i > 1
+        delete(add_obs_plot);
+    end
 end
 %movie2avi(mov,'movie.avi');
  
