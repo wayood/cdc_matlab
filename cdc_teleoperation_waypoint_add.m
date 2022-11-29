@@ -79,12 +79,12 @@ while 1
     [ang,l] = cart2pol(ran_x,ran_y);   
     
     if l <= range_base  && (7*pi)/36 <= ang && ang <= (29*pi)/36
-        glo_rand_size(i)=0.1+0.5*rand;
+        glo_rand_size(i)=0.005+0.5*rand;
         glo_obs(1,i)=ran_x;
         glo_obs(2,i)=ran_y;
         i=i+1;
     elseif (7*pi)/36 <= ang && ang <= (29*pi)/36 && ran_y < range_base + 20
-        add_obs_rand_size(j) = 0.3+0.5*rand;
+        add_obs_rand_size(j) = 0.005+0.5*rand;
         ground_add_obs(:,j) = [ran_x;ran_y];
         j=j+1;
     end
@@ -778,7 +778,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
             [obs_init_stock]=gosa_hozon(glo_gosa_obs);
             [add_obs_init_stock]=gosa_hozon(add_obs_init);
         else
-            goal = wp(:,wp_i).';
+            goal = wp(1:2,wp_i).';
         end
 
         
@@ -1019,8 +1019,7 @@ function [wp,start,ang,flag,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(
         %}
         
         %ゴール判定
-        disp(norm([x(1),x(2)]-goal));
-        if norm(x(1:2)-goal) < Goal_tor
+        if norm([x(1),x(2)]-goal) < Goal_tor
             disp('Arrive Goal!!');
             ang = x(3);
             %プロットポイントコメントアウト部分
