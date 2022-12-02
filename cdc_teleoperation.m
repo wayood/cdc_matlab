@@ -74,8 +74,10 @@ fig.WindowButtonDownFcn = @WindowButtonDownFcn_fig;
 fig.WindowButtonUpFcn = @WindowButtonUpFcn_fig;
 
 % 岩石分布の式
+%直径の大きさ
 D = 0.2;
-k = 0.1;
+%分布の確率
+k = 0.05;
 q = 1.79+0.152/k;
 F = k*exp(-q*D);
 
@@ -387,32 +389,45 @@ function [wp_new,k,mat_er,plan_er]=compensation(lm_current,lm_first,lm_add_curre
             wp_init(3,:) = [];
             k=cond(A,2);
         else
-            wp_new = wp_stock;
+            wp_new = wp_stock(:,1:length(wp_init(1,:)));
             k = 0;
             mat_er = 0;
             plan_er = 0;
         end
     else
-        wp_new = wp_stock;
+        wp_new = wp_stock(:,1:length(wp_init(1,:)));
         k = 0;
         mat_er = 0;
         plan_er = 0;
     end
     
-    if isempty(wp_add) == 0
+    if isempty(wp_add) == 0       
         for i = 1:length(wp_add)
             wp_add{i,:}(3,:) = 1;
-            
-            lm_add_current{i}(3,:) = 1;
-            lm_add_init{i}(3,:) = 1;
-            
-            A_add = lm_add_current{i}*pinv(lm_add_init{i});
-            wp_add_new = A_add*wp_add{i,:};
-            wp_new = [wp_new wp_add_new];
-            wp_add{i,:}(3,:) = [];
+            if isempty(find(lm_add_current{i})) == 0
+                [~,Cols] = size(lm_add_current{i});
+                if Cols > 2                    
+                    lm_add_current{i}(3,:) = 1;
+                    lm_add_init{i}(3,:) = 1;              
+                    A_add = lm_add_current{i}*pinv(lm_add_init{i});
+                    wp_add_new = A_add*wp_add{i,:};
+                    wp_new = [wp_new wp_add_new];            
+                else
+                    wp_new = [wp_new wp_add{i}];
+                end
+            else
+                wp_new = [wp_new wp_add{i}];
+            end
+            wp_add{i,:}(3,:) = [];        
         end
     end
+
     wp_stock = wp_new;
+    [rows,~]=size(wp_new);
+    if rows == 3
+        wp_new(3,:) = [];
+    end
+    
 end
 
 %% A行列解析
@@ -463,8 +478,8 @@ function [b] = graph_first(glo_gosa_obs,p,size)
     plot(p.start(1,1),p.start(2,1),'b:.','MarkerSize',5);
     hold on;
     grid on;
-    xlabel('$x[m]$', 'Interpreter', 'latex');
-    ylabel('$y[m]$', 'Interpreter', 'latex');
+    xlabel('$x[m]$', 'Interpreter', 'latex','FontWeight','bold');
+    ylabel('$y[m]$', 'Interpreter', 'latex','FontWeight','bold');
     xlim([-20 20]);
     ylim([0 30]);
 end
@@ -723,6 +738,8 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
         lm_first_size = {};
         lm_current_size ={};
         lm_add_size = {};
+        up_obs = [];
+        gosa_obs = [];
 
         R = rem(i*0.5,Hz);
         if i == 1 && wp_i == 1 
@@ -752,7 +769,9 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
             delete(wp_plt);
             delete(kill_sensor_range);
         end
-        
+        L = [];
+        b = [];
+
         if i>1 & isempty(find(select_add_num == 0)) == 0
             delete(d_obs);
         end
@@ -820,9 +839,13 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
                     add_range_size = zeros(length(add_obs_init(1,:)));
                 else
                     [~,num_add,~]=sensor_range(lm_add_current_stock{add_i},start,x(3));
-                    [add_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_add_stock(add_i,:)),num_add,add_obs_size{add_count});
-                    [~,add_range_ground_obs]=sensor_judge(lm_add_current_stock{add_i},num_add,add_obs_size{add_count});
-                    [add_obs]=gosamodel(add_range_ground_obs,start,ang_wp);
+                    [add_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_add_stock(add_i,:)),num_add,add_obs_size{add_i});
+                    [~,add_range_ground_obs]=sensor_judge(lm_add_current_stock{add_i},num_add,add_obs_size{add_i});
+                    if isempty(find(add_range_ground_obs)) == 0
+                        [add_obs]=gosamodel(add_range_ground_obs,start,ang_wp);
+                    else
+                        add_obs = zeros(2,length(add_obs_init(1,:)));
+                    end
                 end
                 current_add_obs(add_i,:) = {add_obs};
                 add_gosa_obs(add_i,:) = {gosa_add_obs};
@@ -842,7 +865,11 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
                     [~,num_first,~]=sensor_range(lm_first_current_stock{add_i},start,x(3));
                     [first_range_size,gosa_add_obs]=sensor_judge(cell2mat(lm_first_stock(add_i,:)),num_first,first_obs_size{add_i});
                     [~,first_range_gosa_obs]=sensor_judge(lm_first_current_stock{add_i},num_first,first_obs_size{add_i});
-                    [init_obs]=gosamodel(first_range_gosa_obs,start,ang_wp);
+                    if isempty(find(first_range_gosa_obs)) == 0
+                        [init_obs]=gosamodel(first_range_gosa_obs,start,ang_wp);
+                    else
+                        init_obs = zeros(2,length(glo_gosa_obs(1,:)));
+                    end
                 end
                 current_init_obs(add_i,:) = {init_obs};
                 first_gosa_obs(add_i,:) = {gosa_add_obs};
@@ -851,16 +878,19 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
         end
         
         if isempty(lm_add_stock) == 0 && isempty(lm_first_stock) == 0   
-            for add_i = 1:add_count
+            for add_i = 1:add_count                
                 if isempty(find(lm_add_stock{add_i})) == 0 && isempty(find(lm_first_stock{add_i})) == 0
+                    disp("1");
                     lm_add_init(add_i,:) = {first_gosa_obs{add_i,:} add_gosa_obs{add_i,:}};
                     lm_add_current(add_i,:) = {current_init_obs{add_i,:} current_add_obs{add_i,:}};
-                    lm_add_size(add_i,:) = {lm_first_size{add_i,:} lm_current_size{add_i,:}};
+                    lm_add_size(add_i,:) = {lm_first_size{add_i,:} lm_current_size{add_i,:}};  
                 elseif isempty(find(lm_add_stock{add_i})) && isempty(find(lm_first_stock{add_i})) == 0
+                    disp("2");
                     lm_add_init(add_i,:) = first_gosa_obs(add_i,:);
                     lm_add_current(add_i,:) = current_init_obs(add_i,:);
                     lm_add_size(add_i,:) = lm_first_size(add_i,:);
                 elseif isempty(find(lm_add_stock{add_i}))  == 0&& isempty(find(lm_first_stock{add_i}))
+                    disp("3");
                     lm_add_init(add_i,:) = add_gosa_obs(add_i,:);
                     lm_add_current(add_i,:) = current_add_obs(add_i,:);
                     lm_add_size(add_i,:) = lm_current_size(add_i,:);
@@ -901,6 +931,7 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
             end
         end
 
+            % 追加のパス判定
         if strcmp(add_path.State,'finished') && flag_wp_continue == 0
             if isempty(add_path.Error)
                 [add_path_stock,wp_add_stock] = fetchOutputs(add_path);
@@ -925,6 +956,7 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
             for obs_i = 1:length(up_add_obs(1,:))
                 d_obs(obs_i) = circle_plot(up_add_obs(:,obs_i).',add_range_size(obs_i),mintblue);
             end
+            b = [b d_obs];
         end
 
         if add_flag == 1 && i > 1 
@@ -933,15 +965,19 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
             add_flag = 0;
         end
         
-        
-        if isempty(lm_add_stock) == 0
-            for add_i = 1:add_count
-                for obs_i = 1:length(lm_add_current{add_i}(1,:))
-                    init_obs_plot_stock(obs_i) = en_plot_blue(lm_add_init{add_i}(:,obs_i).',lm_add_size{add_i}(obs_i));
-                    add_obs_plot_stock(obs_i) = en_plot_orange(lm_add_current{add_i}(:,obs_i).',lm_add_size{add_i}(obs_i));
+        % 追加時の障害物プロット
+        if isempty(lm_add_current) == 0
+            for add_i = 1:size(lm_add_current)
+                if isempty(find(lm_add_current{add_i})) == 0
+                    L_add = lm_line(lm_add_current{add_i},lm_add_init{add_i});
+                    L = [L L_add];
+                    for obs_i = 1:length(lm_add_current{add_i}(1,:))
+                        init_obs_plot_stock(obs_i) = en_plot_blue(lm_add_init{add_i}(:,obs_i).',lm_add_size{add_i}(obs_i));
+                        add_obs_plot_stock(obs_i) = en_plot_orange(lm_add_current{add_i}(:,obs_i).',lm_add_size{add_i}(obs_i));
+                    end
+                    add_obs_plot = [add_obs_plot add_obs_plot_stock];
+                    init_obs_plot = [init_obs_plot init_obs_plot_stock];
                 end
-                add_obs_plot = [add_obs_plot add_obs_plot_stock];
-                init_obs_plot = [init_obs_plot init_obs_plot_stock];
             end
             add_flag = 1;
         end
@@ -1019,9 +1055,7 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
     delete(wp_plt);
     delete(L);
     delete(r);
-    if i>1 & isempty(find(select_add_num == 0)) == 0
-        delete(d_obs);
-    end
+ 
     if add_flag == 1 && i > 1
         delete(add_obs_plot);
     end
