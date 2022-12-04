@@ -413,10 +413,10 @@ function [wp_new,k,mat_er,plan_er]=compensation(lm_current,lm_first,lm_add_curre
                     wp_add_new = A_add*wp_add{i,:};
                     wp_new = [wp_new wp_add_new];            
                 else
-                    wp_new = [wp_new wp_add{i}];
+                    wp_new = [wp_new wp_stock(:,length(wp_init(1,:))+i)];
                 end
             else
-                wp_new = [wp_new wp_add{i}];
+                wp_new = [wp_new wp_stock(:,length(wp_init(1,:))+i)];
             end
             wp_add{i,:}(3,:) = [];        
         end
@@ -880,17 +880,14 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
         if isempty(lm_add_stock) == 0 && isempty(lm_first_stock) == 0   
             for add_i = 1:add_count                
                 if isempty(find(lm_add_stock{add_i})) == 0 && isempty(find(lm_first_stock{add_i})) == 0
-                    disp("1");
                     lm_add_init(add_i,:) = {first_gosa_obs{add_i,:} add_gosa_obs{add_i,:}};
                     lm_add_current(add_i,:) = {current_init_obs{add_i,:} current_add_obs{add_i,:}};
                     lm_add_size(add_i,:) = {lm_first_size{add_i,:} lm_current_size{add_i,:}};  
                 elseif isempty(find(lm_add_stock{add_i})) && isempty(find(lm_first_stock{add_i})) == 0
-                    disp("2");
                     lm_add_init(add_i,:) = first_gosa_obs(add_i,:);
                     lm_add_current(add_i,:) = current_init_obs(add_i,:);
                     lm_add_size(add_i,:) = lm_first_size(add_i,:);
                 elseif isempty(find(lm_add_stock{add_i}))  == 0&& isempty(find(lm_first_stock{add_i}))
-                    disp("3");
                     lm_add_init(add_i,:) = add_gosa_obs(add_i,:);
                     lm_add_current(add_i,:) = current_add_obs(add_i,:);
                     lm_add_size(add_i,:) = lm_current_size(add_i,:);
@@ -1048,6 +1045,9 @@ function [wp,start,ang,b,up_obs,rand_size] = DynamicWindowApproach_for_cdc(start
                hold on;
             end
          end
+         xlim auto;
+         ylim auto;
+         daspect([1 1 1]);
          pause(0.01);
     end
     %プロットポイントコメントアウト部分
