@@ -40,6 +40,7 @@ global first_obs_size;
 global lm_first_current_stock;
 global add_slip;
 global wp_stock;
+global time_conv;
 wp_stock = [];
 add_slip = {};
 add_count = 0;
@@ -58,6 +59,7 @@ lm_cur_1 = [];
 glo_slip_x = 0;
 glo_slip_y = 0;
 drive_cdc=[];
+time_conv = [];
 ang_wp = pi/2;
 range_base=10;
 i=1;
@@ -243,6 +245,7 @@ function kill = lm_line(LM_current,LM_first)
         hold on;
     end
 end
+
 %% 誤差モデル計算　
 %距離による関係性を考えた。
 %これはDEMのステレオデータによる誤差を主に考えた。
@@ -279,26 +282,6 @@ function [up_obs]=gosa_move(obs,start,ang_wp,v)
     up_obs(1,:)=obs(1,:)+glo_slip_x;
     up_obs(2,:)=obs(2,:)+glo_slip_y;
 
-end
-
-function R = correlation(one_wp,another_wp)
-    N = length(another_wp(1,:)) - 1;
-    one_x = linspace(one_wp(1,1),one_wp(1,end),N*100);
-    one_y = linspace(one_wp(2,1),one_wp(2,end),N*100);
-    one = [one_x
-           one_y];
-       
-    another_x = [];
-    another_y = [];
-    for i = 2:length(another_wp(1,:))
-        stock_x = linspace(another_wp(1,i-1),another_wp(1,i),100);
-        stock_y = linspace(another_wp(2,i-1),another_wp(2,i),100);
-        another_x = [another_x stock_x];
-        another_y = [another_y stock_y];
-    end
-    another = [another_x
-               another_y];
-    R = corrcoef(one,another);
 end
 
 %% スリップ率導入
@@ -435,6 +418,7 @@ end
 
 function [matrix_error,matrix_timespace_error]=A_matrix(A,LM_current,LM_first,A_n,LM_t_1)
     global Path_analysis;
+    global time_conv;
     matrix_error = cond(A)*norm(A*LM_first-LM_current)/norm(A*LM_first);
     matrix_timespace_error = cond(A_n)*norm(A_n-A)/norm(A_n);
     [h,~] = size(LM_t_1);
@@ -445,7 +429,6 @@ function [matrix_error,matrix_timespace_error]=A_matrix(A,LM_current,LM_first,A_
     [U_distortion,S_distortion,V_distortion] = svd(A);
     
     rotation = U_distortion*V_distortion;
-    
     theta_z = atan(-rotation(1,2)/rotation(1,1));
     parallel_y = 2*(-rotation(3,2)/rotation(3,3));
     parallel_x = 2*((rotation(3,1)+rotation(3,2))/(rotation(2,1)+rotation(2,2)));
@@ -454,6 +437,17 @@ function [matrix_error,matrix_timespace_error]=A_matrix(A,LM_current,LM_first,A_
     rotation_theta_2 = asin(V_distortion(1,1));
     streching_x = S_distortion(1,1);
     streching_y = S_distortion(2,2);
+    
+    LM_virtual = A_n*LM_first;
+    LM_vector = LM_virtual - LM_current;
+    LM_vector(3,:) = [];
+    conv_lm = cov(LM_vector(1,:),LM_vector(2,:));
+    time_conv = [time_conv (conv_lm(1,2))];
+    step = linspace(0,length(time_conv),length(time_conv));
+    gprMdl = fitrgp(step,time_conv,'Basis','linear',...
+          'KernelFunction','exponential','FitMethod','exact','PredictMethod','exact');
+    step_pre = linspace(length(time_conv),length(time_conv)+2);
+    [conv_pre,~,conv_pre_ci] = predict(gprMdl,step_pre);
     
     if h == 3
         [~,Z_t_1,~] = svd(LM_t_1);
@@ -466,6 +460,7 @@ function [matrix_error,matrix_timespace_error]=A_matrix(A,LM_current,LM_first,A_
         fprintf("A matrix disperation (Utsuno proposal)\n  --> Error Size %f, Error direction %f\n\n",CNRate_spatial,VTRate_spatial(1,2));
         fprintf("A matrix disperation (Karitani proposal)\n  --> Matrix Error %f, Timespace Error %f, Parallel Translation(x) %f, Parallel Translation(y) %f,Rotation %f \n\n",matrix_error,matrix_timespace_error,parallel_x,parallel_y,theta_z);
         fprintf("A matrix disperation (main proposed)\n  --> Rotation %f, Streching x %f, Streching Y %f\n\n",rotation_theta_1+rotation_theta_2,streching_x,streching_y);
+        fprintf("A matrix disperation (proposed)\n --> 非アフィン部分 %f \n\n",time_conv(end));
     end
 end
 
