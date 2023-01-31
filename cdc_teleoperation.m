@@ -4,9 +4,11 @@ clear all;
 fig = figure;
 fig.Color = 'white';
 
-
+global N;
+N = 1;
 %% 初期宣言
 p.start = [0;0];
+goal = [0 20];
 global range_base;
 global glo_obs;
 global glo_gosa_obs;
@@ -41,8 +43,11 @@ global lm_first_current_stock;
 global add_slip;
 global wp_stock;
 global time_conv;
+global tracking_error;
+global conv_pre_ci;
 wp_stock = [];
 add_slip = {};
+tracking_error = [];
 add_count = 0;
 lm_first_stock = {};
 lm_add_stock = {};
@@ -59,9 +64,11 @@ lm_cur_1 = [];
 glo_slip_x = 0;
 glo_slip_y = 0;
 drive_cdc=[];
+conv_pre_ci = [];
 time_conv = [];
 ang_wp = pi/2;
-range_base=10;
+tracking_error = zeros(2,1000);
+range_base=20;
 i=1;
 j=1;
 ax = axes(fig);
@@ -119,14 +126,13 @@ end
 [add_obs_init]=gosamodel(ground_add_obs,p.start,ang_wp);
 glo_add_obs_init = ground_add_obs;
 glo_obs_init = glo_obs;
+obs = ob_round(glo_gosa_obs,glo_rand_size);
+obs_list = obs.';
 
 gosa_plot = graph_first(glo_gosa_obs,p,glo_rand_size);
 
-
 %wpを手動で設定
-[x,y]=ginput;
-wp=[x.';
-    y.'];
+[~,wp] = DynamicWindowApproach_global(p.start.',goal,obs_list);
 global wp_init;
 wp_init = wp;
 wp_stock = wp_init;
@@ -162,7 +168,7 @@ dt = 0.1;
 count = 1;
 elapsed_count = 1;
 
-obs = ob_round(glo_gosa_obs,glo_rand_size);
+
 ang = pi/2;
 wp_add_count = 1;
 wp_add_array(1).wp = [];
@@ -170,7 +176,7 @@ wp_add_array(1).count = [];
 wp_add_array(1).lm_add = [];
 wp_add_array(1).lm_add_range = [];
 ButtonState = false;
-obs_list = obs.';
+
 
 %ナビゲーション
 while 1
@@ -251,6 +257,7 @@ end
 %これはDEMのステレオデータによる誤差を主に考えた。
 function [up_obs]=gosamodel(obs,start,ang)
  global range_base;
+ global tracking_error;
  for i=1:length(obs(1,:))
     [~,leng] = cart2pol(obs(1,i),obs(2,i));
     r(i)=len(obs(:,i).',start.');
@@ -259,17 +266,19 @@ function [up_obs]=gosamodel(obs,start,ang)
     end
     x_ran=-0.01+0.02*rand; %キャリブレーションや分解能での誤差を考える
     y_ran=-0.01+0.02*rand;
+    tracking_error(1,i) = tracking_error(1,i) + x_ran;
+    tracking_error(2,i) = tracking_error(2,i) + y_ran;
     if leng >= range_base
         l=18.5*10^-2*range_base^2*0.01;
         [x_error,y_error] = pol2cart(ang,l);
-        up_obs(1,i)=obs(1,i)+x_error+x_ran;
-        up_obs(2,i)=obs(2,i)+y_error+y_ran;
+        up_obs(1,i)=obs(1,i)+x_error+tracking_error(1,i);
+        up_obs(2,i)=obs(2,i)+y_error+tracking_error(2,i);
         continue;
     end
     l=18.5*10^-2*r(i)^2*0.01;
     [x_error,y_error] = pol2cart(ang,l);
-    up_obs(1,i)=obs(1,i)+x_error+x_ran;
-    up_obs(2,i)=obs(2,i)+y_error+y_ran;
+    up_obs(1,i)=obs(1,i)+x_error+tracking_error(1,i);
+    up_obs(2,i)=obs(2,i)+y_error+tracking_error(2,i);
  end
 end
 
@@ -419,6 +428,12 @@ end
 function [matrix_error,matrix_timespace_error]=A_matrix(A,LM_current,LM_first,A_n,LM_t_1)
     global Path_analysis;
     global time_conv;
+    global N;
+    global conv_pre_ci;
+    past_predict_value = zeros(1,100);
+    real_value = [];
+    RMSE = 0;
+    POUE = 0;
     matrix_error = cond(A)*norm(A*LM_first-LM_current)/norm(A*LM_first);
     matrix_timespace_error = cond(A_n)*norm(A_n-A)/norm(A_n);
     [h,~] = size(LM_t_1);
@@ -443,24 +458,39 @@ function [matrix_error,matrix_timespace_error]=A_matrix(A,LM_current,LM_first,A_
     LM_vector(3,:) = [];
     conv_lm = cov(LM_vector(1,:),LM_vector(2,:));
     time_conv = [time_conv (conv_lm(1,2))];
-    step = linspace(0,length(time_conv),length(time_conv));
+    step = linspace(0,length(time_conv),length(time_conv))';
     gprMdl = fitrgp(step,time_conv,'Basis','linear',...
           'KernelFunction','exponential','FitMethod','exact','PredictMethod','exact');
-    step_pre = linspace(length(time_conv),length(time_conv)+2);
-    [conv_pre,~,conv_pre_ci] = predict(gprMdl,step_pre);
+    step_pre = linspace(length(time_conv),length(time_conv) + 2)';
     
+    if isempty(conv_pre_ci) == 0
+        past_predict_value = conv_pre_ci(2,:).';
+    end
+    [conv_pre,pre_conv,conv_pre_ci] = predict(gprMdl,step_pre);
+    if length(time_conv) > 2
+        real_value = linspace(time_conv(end-2),time_conv(end));
+    end
+    
+    if isempty(past_predict_value) == 0 && length(time_conv) > 2
+        num = real_value > past_predict_value;
+        thre_sum = sum(num,2);
+        POUE = thre_sum(1,1)/length(real_value);
+        RMSE = rmse(real_value,past_predict_value,2);
+    end
+    fprintf("RMSE(予測精度) : %f [m], POUE(過小評価率) : %f [percent]\n\n",RMSE(1,1),POUE);
     if h == 3
         [~,Z_t_1,~] = svd(LM_t_1);
         %VTRate_seque = sum(dot(V_current,V_t_1))/3;
         CNRate_seque = cond(S_current)/cond(Z_t_1);
-        Path_analysis_vir = [matrix_error,matrix_timespace_error,parallel_x,parallel_y,theta_z,VTRate_spatial(1,2),CNRate_spatial,CNRate_seque,cond(A)];
+      
+        Path_analysis_vir = [matrix_error,matrix_timespace_error,parallel_x,parallel_y,theta_z,VTRate_spatial(1,2),CNRate_spatial,CNRate_seque,cond(A),rotation_theta_1+rotation_theta_2,streching_x,streching_y,time_conv(end),conv_pre(end),RMSE(1,1),POUE];
         Path_analysis = [Path_analysis;Path_analysis_vir];
-        file = sprintf("A_matrix.mat");
+        
+        file = sprintf("./A_matrix/A_matrix_%d.mat",N);
         save(file,"Path_analysis");
         fprintf("A matrix disperation (Utsuno proposal)\n  --> Error Size %f, Error direction %f\n\n",CNRate_spatial,VTRate_spatial(1,2));
         fprintf("A matrix disperation (Karitani proposal)\n  --> Matrix Error %f, Timespace Error %f, Parallel Translation(x) %f, Parallel Translation(y) %f,Rotation %f \n\n",matrix_error,matrix_timespace_error,parallel_x,parallel_y,theta_z);
-        fprintf("A matrix disperation (main proposed)\n  --> Rotation %f, Streching x %f, Streching Y %f\n\n",rotation_theta_1+rotation_theta_2,streching_x,streching_y);
-        fprintf("A matrix disperation (proposed)\n --> 非アフィン部分 %f \n\n",time_conv(end));
+        fprintf("A matrix disperation (proposed)\n  --> Rotation %f, Streching x %f, Streching Y %f 非アフィン部分 %f ,ガウス過程回帰による2step先の予測 %f \n\n",rotation_theta_1+rotation_theta_2,streching_x,streching_y,time_conv(end),conv_pre(end));
     end
 end
 
